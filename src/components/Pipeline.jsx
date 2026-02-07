@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 const PIPELINE_STEPS = [
     { key: 'synopsis', label: '시놉시스', icon: '📄', path: 'synopsis' },
     { key: 'screenplay', label: '시나리오', icon: '📝', path: 'screenplay' },
+    { key: 'conti', label: '줄콘티', icon: '📋', path: 'conti' },
     { key: 'storyboard', label: '스토리보드', icon: '🎬', path: 'storyboard' },
     { key: 'keyvisual', label: '키비주얼', icon: '🎨', path: 'keyvisual' },
     { key: 'prompts', label: '프롬프트', icon: '🎥', path: 'prompts' },
@@ -13,9 +14,11 @@ export function Pipeline({ projectId, project }) {
         if (!project) return '';
         switch (key) {
             case 'synopsis':
-                return project.synopsis?.content ? 'completed' : '';
+                return project.synopsis?.content || project.synopsis?.structured ? 'completed' : '';
             case 'screenplay':
                 return project.screenplay?.scenes?.length > 0 ? 'completed' : '';
+            case 'conti':
+                return project.conti?.scenes?.length > 0 ? 'completed' : '';
             case 'storyboard':
                 return project.storyboard?.frames?.length > 0 ? 'completed' : '';
             case 'keyvisual':

@@ -4,6 +4,12 @@ export default function Sidebar() {
     const location = useLocation();
     const isProjectPage = location.pathname.startsWith('/project/');
 
+    // pathname에서 projectId 추출: /project/:id/...
+    const projectId = isProjectPage
+        ? location.pathname.split('/')[2]
+        : null;
+    const baseUrl = projectId ? `/project/${projectId}` : '';
+
     return (
         <aside className="sidebar">
             <div className="sidebar-logo">
@@ -25,11 +31,12 @@ export default function Sidebar() {
                 {isProjectPage && (
                     <>
                         <span className="sidebar-section-title">파이프라인</span>
-                        <SidebarStep to="synopsis" icon="📄" label="시놉시스" />
-                        <SidebarStep to="screenplay" icon="📝" label="시나리오" />
-                        <SidebarStep to="storyboard" icon="🎬" label="스토리보드" />
-                        <SidebarStep to="keyvisual" icon="🎨" label="키비주얼" />
-                        <SidebarStep to="prompts" icon="🎥" label="프롬프트" />
+                        <SidebarStep to={`${baseUrl}/synopsis`} icon="📄" label="시놉시스" />
+                        <SidebarStep to={`${baseUrl}/screenplay`} icon="📝" label="시나리오" />
+                        <SidebarStep to={`${baseUrl}/conti`} icon="📋" label="줄콘티" />
+                        <SidebarStep to={`${baseUrl}/storyboard`} icon="🎬" label="스토리보드" />
+                        <SidebarStep to={`${baseUrl}/keyvisual`} icon="🎨" label="키비주얼" />
+                        <SidebarStep to={`${baseUrl}/prompts`} icon="🎥" label="프롬프트" />
                     </>
                 )}
             </nav>
@@ -46,7 +53,7 @@ export default function Sidebar() {
 
 function SidebarStep({ to, icon, label }) {
     const location = useLocation();
-    const isActive = location.pathname.endsWith('/' + to);
+    const isActive = location.pathname === to;
 
     return (
         <NavLink

@@ -31,6 +31,7 @@ function createEmptyProject(title, description = '') {
     updatedAt: now,
     synopsis: { content: '', updatedAt: null },
     screenplay: { scenes: [], updatedAt: null },
+    conti: { scenes: [], assumptions: [], updatedAt: null },
     storyboard: { frames: [], updatedAt: null },
     keyvisuals: [],
     productionPrompts: [],
@@ -87,6 +88,12 @@ export async function updateScreenplay(id, scenes) {
   });
 }
 
+export async function updateConti(id, contiData) {
+  return updateProject(id, {
+    conti: { ...contiData, updatedAt: new Date().toISOString() },
+  });
+}
+
 export async function updateStoryboard(id, frames) {
   return updateProject(id, {
     storyboard: { frames, updatedAt: new Date().toISOString() },
@@ -135,14 +142,71 @@ export async function importProject(jsonString) {
 
 // --- Seed Data ---
 
-import { JINJU_SYNOPSIS, JINJU_PROJECT } from './data/jinju-seed';
+import { JINJU_SYNOPSIS, JINJU_PROJECT, JINJU_SCREENPLAY, JINJU_STORYBOARD, JINJU_KEYVISUALS, JINJU_PROMPTS } from './data/jinju-seed';
+import { JINJU_CONTI } from './data/jinju-conti';
 
 export async function seedJinjuProject() {
   const db = await getDB();
   const existing = await db.getAll(STORE_NAME);
-  if (existing.some(p => p.title === '진주성의 최후 9일')) return null;
+  const found = existing.find(p => p.title === '진주성의 최후 9일');
 
   const now = new Date().toISOString();
+
+  // 이미 존재하면 → 빠진 데이터 마이그레이션
+  if (found) {
+    let changed = false;
+    if (!found.synopsis?.structured) {
+      found.synopsis = { structured: JINJU_SYNOPSIS, updatedAt: now };
+      changed = true;
+    }
+    if (!found.screenplay?.scenes?.length) {
+      found.screenplay = { scenes: JINJU_SCREENPLAY, updatedAt: now };
+      changed = true;
+    }
+    const contiNeedsUpdate = !found.conti?.scenes?.length ||
+      !found.conti?.scenes?.[0]?.cuts?.[0]?.sketch_prompt?.includes('Photorealistic');
+    if (contiNeedsUpdate) {
+      found.conti = { ...JINJU_CONTI, updatedAt: now };
+      changed = true;
+    }
+    if (!found.storyboard?.frames?.length) {
+      found.storyboard = { frames: JINJU_STORYBOARD, updatedAt: now };
+      changed = true;
+    } else {
+      // 기존 프레임의 빈 imageUrl을 시드에서 동기화
+      found.storyboard.frames.forEach((f, i) => {
+        if (!f.imageUrl && JINJU_STORYBOARD[i]?.imageUrl) {
+          f.imageUrl = JINJU_STORYBOARD[i].imageUrl;
+          changed = true;
+        }
+      });
+    }
+    if (!found.keyvisuals?.length) {
+      found.keyvisuals = JINJU_KEYVISUALS;
+      changed = true;
+    } else {
+      // 기존 키비주얼의 빈 imageUrl을 시드에서 동기화
+      found.keyvisuals.forEach(kv => {
+        const seedKv = JINJU_KEYVISUALS.find(s => s.id === kv.id);
+        if (!kv.imageUrl && seedKv?.imageUrl) {
+          kv.imageUrl = seedKv.imageUrl;
+          changed = true;
+        }
+      });
+    }
+    if (!found.productionPrompts?.length) {
+      found.productionPrompts = JINJU_PROMPTS;
+      changed = true;
+    }
+    if (changed) {
+      found.updatedAt = now;
+      await db.put(STORE_NAME, found);
+      return found;
+    }
+    return null;
+  }
+
+  // 없으면 → 새로 생성 (모든 데이터 포함)
   const project = {
     ...createEmptyProject(JINJU_PROJECT.title, JINJU_PROJECT.description),
     id: JINJU_PROJECT.id,
@@ -150,6 +214,11 @@ export async function seedJinjuProject() {
     createdAt: now,
     updatedAt: now,
     synopsis: { structured: JINJU_SYNOPSIS, updatedAt: now },
+    screenplay: { scenes: JINJU_SCREENPLAY, updatedAt: now },
+    conti: { ...JINJU_CONTI, updatedAt: now },
+    storyboard: { frames: JINJU_STORYBOARD, updatedAt: now },
+    keyvisuals: JINJU_KEYVISUALS,
+    productionPrompts: JINJU_PROMPTS,
   };
   await db.put(STORE_NAME, project);
   return project;

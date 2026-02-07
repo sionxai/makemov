@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import ProjectLayout from './pages/ProjectLayout';
 import SynopsisPage from './pages/SynopsisPage';
 import ScreenplayPage from './pages/ScreenplayPage';
+import ContiPage from './pages/ContiPage';
 import StoryboardPage from './pages/StoryboardPage';
 import KeyVisualPage from './pages/KeyVisualPage';
 import PromptsPage from './pages/PromptsPage';
@@ -19,6 +20,7 @@ export default function App() {
             <Route path="/project/:id" element={<ProjectLayout />}>
               <Route path="synopsis" element={<SynopsisPage />} />
               <Route path="screenplay" element={<ScreenplayPage />} />
+              <Route path="conti" element={<ContiPage />} />
               <Route path="storyboard" element={<StoryboardPage />} />
               <Route path="keyvisual" element={<KeyVisualPage />} />
               <Route path="prompts" element={<PromptsPage />} />
