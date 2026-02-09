@@ -1,6 +1,6 @@
-const { getProjectsCollection, verifyApiKey, setCorsHeaders, sendError, now } = require('../_lib/firebase-admin');
+import { getProjectsCollection, verifyApiKey, setCorsHeaders, sendError, now } from '../_lib/firebase-admin.js';
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     setCorsHeaders(res);
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -15,14 +15,12 @@ module.exports = async function handler(req, res) {
     const docRef = col.doc(id);
 
     try {
-        // ── GET ──
         if (req.method === 'GET') {
             const doc = await docRef.get();
             if (!doc.exists) return sendError(res, 404, `Project ${id} not found`);
             return res.json({ project: { id: doc.id, ...doc.data() } });
         }
 
-        // ── PATCH ──
         if (req.method === 'PATCH') {
             const doc = await docRef.get();
             if (!doc.exists) return sendError(res, 404, `Project ${id} not found`);
@@ -30,37 +28,21 @@ module.exports = async function handler(req, res) {
             const body = req.body || {};
             const update = { updatedAt: now() };
 
-            if (body.synopsis !== undefined) {
-                update.synopsis = { structured: body.synopsis, updatedAt: now() };
-            }
-            if (body.screenplay !== undefined) {
-                update.screenplay = { scenes: body.screenplay, updatedAt: now() };
-            }
-            if (body.conti !== undefined) {
-                update.conti = { ...body.conti, updatedAt: now() };
-            }
-            if (body.storyboard !== undefined) {
-                update.storyboard = body.storyboard;
-            }
-            if (body.keyvisuals !== undefined) {
-                update.keyvisuals = body.keyvisuals;
-            }
-            if (body.prompts !== undefined) {
-                update.prompts = body.prompts;
-            }
+            if (body.synopsis !== undefined) update.synopsis = { structured: body.synopsis, updatedAt: now() };
+            if (body.screenplay !== undefined) update.screenplay = { scenes: body.screenplay, updatedAt: now() };
+            if (body.conti !== undefined) update.conti = { ...body.conti, updatedAt: now() };
+            if (body.storyboard !== undefined) update.storyboard = body.storyboard;
+            if (body.keyvisuals !== undefined) update.keyvisuals = body.keyvisuals;
+            if (body.prompts !== undefined) update.prompts = body.prompts;
             if (body.title) update.title = body.title;
             if (body.description !== undefined) update.description = body.description;
             if (body.status) update.status = body.status;
 
             await docRef.update(update);
             const updated = await docRef.get();
-            return res.json({
-                message: `Project ${id} updated`,
-                project: { id: updated.id, ...updated.data() },
-            });
+            return res.json({ message: `Project ${id} updated`, project: { id: updated.id, ...updated.data() } });
         }
 
-        // ── DELETE ──
         if (req.method === 'DELETE') {
             const doc = await docRef.get();
             if (!doc.exists) return sendError(res, 404, `Project ${id} not found`);
@@ -73,4 +55,4 @@ module.exports = async function handler(req, res) {
         console.error(`[api/projects/${id}]`, err);
         return sendError(res, 500, err.message);
     }
-};
+}
