@@ -7,16 +7,20 @@ export function getAdminDb() {
     if (_db) return _db;
 
     if (getApps().length === 0) {
-        // Vercel 환경변수에서 서비스 계정 정보를 가져온다
-        const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-            ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
-            : null;
+        const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
-        if (serviceAccount) {
-            initializeApp({ credential: cert(serviceAccount) });
+        if (raw) {
+            try {
+                const serviceAccount = JSON.parse(raw);
+                initializeApp({ credential: cert(serviceAccount) });
+            } catch (parseErr) {
+                console.error('[firebase-admin] JSON parse failed:', parseErr.message);
+                console.error('[firebase-admin] raw length:', raw?.length, 'starts with:', raw?.substring(0, 20));
+                throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON parse failed: ' + parseErr.message);
+            }
         } else {
-            // 서비스 계정 없이 프로젝트 ID만으로 초기화 (로컬 에뮬레이터 등)
-            initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || 'makemov-1deec' });
+            console.error('[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON not set');
+            throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON environment variable is not configured');
         }
     }
 
