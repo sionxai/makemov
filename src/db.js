@@ -412,6 +412,9 @@ import {
 } from './data/dongnae-seed';
 import { CHILCHEON_PROJECT, CHILCHEON_SYNOPSIS, CHILCHEON_SCREENPLAY } from './data/chilcheon-seed';
 import { CHILCHEON_CONTI, CHILCHEON_STORYBOARD, CHILCHEON_KEYVISUALS, CHILCHEON_PROMPTS } from './data/chilcheon-conti';
+import { JINJU2_SYNOPSIS } from './data/jinju2-synopsis';
+import { JINJU2_SCREENPLAY } from './data/jinju2-screenplay';
+import { JINJU2_CONTI } from './data/jinju2-conti';
 
 const JINJU_SEED_VERSION = 1;
 const DONGNAE_SEED_VERSION = 1;
@@ -686,5 +689,68 @@ export async function seedRedcliffProject() {
     _synVer: CURRENT_SYN_VER,
   };
   await db.put(STORE_NAME, project);
+  return project;
+}
+
+// --- 2차 진주성전투 Seed ---
+
+const JINJU2_PROJECT = {
+  id: 'proj_jinju2_timeslip',
+  title: '2차 진주성전투 — 시간원정대 타임슬립',
+  description: '1593년 2차 진주성 전투, 시간원정대가 제주목사 이경록의 300 기병과 함께 진주성을 구해내는 타임슬립 액션. 약 180초.',
+  status: 'progress',
+};
+
+export async function seedJinju2Project() {
+  const CURRENT_SYN_VER = 1;
+  const CURRENT_SP_VER = 1;
+  const CURRENT_CONTI_VER = 1;
+  const db = await getDB();
+  const existing = await db.getAll(STORE_NAME);
+  const found = existing.find(p => p.title === JINJU2_PROJECT.title);
+
+  const now = new Date().toISOString();
+
+  if (found) {
+    let changed = false;
+    if ((found._synVer || 0) < CURRENT_SYN_VER) {
+      found.synopsis = { structured: JINJU2_SYNOPSIS, updatedAt: now };
+      found._synVer = CURRENT_SYN_VER;
+      changed = true;
+    }
+    if ((found._spVer || 0) < CURRENT_SP_VER) {
+      found.screenplay = { scenes: JINJU2_SCREENPLAY, updatedAt: now };
+      found._spVer = CURRENT_SP_VER;
+      changed = true;
+    }
+    if (!found.conti?.scenes?.length || (found._contiVer || 0) < CURRENT_CONTI_VER) {
+      found.conti = { ...JINJU2_CONTI, updatedAt: now };
+      found._contiVer = CURRENT_CONTI_VER;
+      changed = true;
+    }
+    if (changed) {
+      found.updatedAt = now;
+      await db.put(STORE_NAME, found);
+      console.log('🏯 [seed] 2차 진주성전투 데이터 갱신 완료');
+      return found;
+    }
+    return null;
+  }
+
+  const project = {
+    ...createEmptyProject(JINJU2_PROJECT.title, JINJU2_PROJECT.description),
+    id: JINJU2_PROJECT.id,
+    status: JINJU2_PROJECT.status,
+    createdAt: now,
+    updatedAt: now,
+    synopsis: { structured: JINJU2_SYNOPSIS, updatedAt: now },
+    screenplay: { scenes: JINJU2_SCREENPLAY, updatedAt: now },
+    conti: { ...JINJU2_CONTI, updatedAt: now },
+    _synVer: CURRENT_SYN_VER,
+    _spVer: CURRENT_SP_VER,
+    _contiVer: CURRENT_CONTI_VER,
+  };
+  await db.put(STORE_NAME, project);
+  console.log('🏯 [seed] 2차 진주성전투 신규 생성 완료');
   return project;
 }

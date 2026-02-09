@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllProjects, createProject, deleteProject, seedJinjuProject, seedRedcliffProject, seedDongnaeProject, seedChilcheonProject } from '../db';
+import { getAllProjects, createProject, deleteProject, seedJinjuProject, seedRedcliffProject, seedDongnaeProject, seedChilcheonProject, seedJinju2Project } from '../db';
 import { CreateProjectModal, ConfirmModal } from '../components/Modal';
 
 export default function Dashboard() {
@@ -16,6 +16,7 @@ export default function Dashboard() {
         await seedDongnaeProject(); // 동래성 전투 시드
         await seedChilcheonProject(); // 칠천량 해전 시드
         await seedRedcliffProject(); // 적벽대전 시드
+        await seedJinju2Project(); // 2차 진주성전투 시드
         const data = await getAllProjects();
         setProjects(data);
         setLoading(false);
