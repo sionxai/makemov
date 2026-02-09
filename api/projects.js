@@ -1,9 +1,6 @@
-import { getProjectsCollection, verifyApiKey, setCorsHeaders, sendError, now } from './_lib/firebase-admin.js';
+const { getProjectsCollection, verifyApiKey, setCorsHeaders, sendError, now } = require('./_lib/firebase-admin');
 
-// GET  /api/projects         → 전체 프로젝트 목록
-// POST /api/projects         → 새 프로젝트 생성
-// GET  /api/projects?id=xxx  → 단일 프로젝트 조회
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     setCorsHeaders(res);
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -19,13 +16,11 @@ export default async function handler(req, res) {
             const { id } = req.query;
 
             if (id) {
-                // 단일 프로젝트 조회
                 const doc = await col.doc(id).get();
                 if (!doc.exists) return sendError(res, 404, `Project ${id} not found`);
                 return res.json({ project: { id: doc.id, ...doc.data() } });
             }
 
-            // 전체 목록
             const snapshot = await col.orderBy('updatedAt', 'desc').get();
             const projects = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             return res.json({ projects });
@@ -63,4 +58,4 @@ export default async function handler(req, res) {
         console.error('[api/projects]', err);
         return sendError(res, 500, err.message);
     }
-}
+};
