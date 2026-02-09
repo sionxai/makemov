@@ -188,6 +188,123 @@ await window.__makemov.addProductionPrompt('proj_id', { title, type, prompt, sce
 6. 영구 보존이 필요하면 반드시 src/data/ 소스 파일을 수정할 것`} lang="markdown" />
             </Section>
 
+            {/* ── REST API (외부 AI용) ────────────── */}
+            <Section icon="🌐" title="REST API (외부 AI 에이전트용)" id="rest-api">
+                <div className="agent-instruction-box">
+                    <div className="agent-kv-row"><span className="agent-kv-key">BASE_URL</span><span className="agent-kv-val">https://makemov-ioe7.vercel.app/api</span></div>
+                    <div className="agent-kv-row"><span className="agent-kv-key">AUTH</span><span className="agent-kv-val">x-api-key 헤더 (설정된 경우)</span></div>
+                    <div className="agent-kv-row"><span className="agent-kv-key">CONTENT_TYPE</span><span className="agent-kv-val">application/json</span></div>
+                    <div className="agent-kv-row"><span className="agent-kv-key">DB</span><span className="agent-kv-val">Cloud Firestore (모든 브라우저에서 공유)</span></div>
+                </div>
+
+                <p className="agent-note">
+                    ✅ <strong>이 API는 브라우저 없이 HTTP 요청만으로 사용 가능합니다.</strong><br />
+                    외부 AI 에이전트(ChatGPT, Claude, Gemini 등)가 직접 호출할 수 있습니다.<br />
+                    생성된 프로젝트는 Firestore에 저장되어 <strong>모든 브라우저에서 즉시 확인</strong>할 수 있습니다.
+                </p>
+
+                <h3>📋 엔드포인트 목록</h3>
+                <div className="agent-table-wrap">
+                    <table className="agent-table">
+                        <thead>
+                            <tr><th>Method</th><th>Endpoint</th><th>설명</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>GET</code></td><td><code>/api/projects</code></td><td>전체 프로젝트 목록 조회</td></tr>
+                            <tr><td><code>POST</code></td><td><code>/api/projects</code></td><td>새 프로젝트 생성</td></tr>
+                            <tr><td><code>GET</code></td><td><code>/api/projects/[id]</code></td><td>단일 프로젝트 조회</td></tr>
+                            <tr><td><code>PATCH</code></td><td><code>/api/projects/[id]</code></td><td>프로젝트 업데이트 (시놉시스, 시나리오, 콘티 등)</td></tr>
+                            <tr><td><code>DELETE</code></td><td><code>/api/projects/[id]</code></td><td>프로젝트 삭제</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <CodeBlock title="1. 프로젝트 생성" code={`// POST /api/projects
+const res = await fetch('https://makemov-ioe7.vercel.app/api/projects', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: '적벽대전 — 화공의 밤',
+    description: '208년 조조 대군을 상대로 한 제갈량과 주유의 화공 작전'
+  })
+});
+const { project } = await res.json();
+console.log('Created:', project.id);`} />
+
+                <CodeBlock title="2. 시놉시스 작성" code={`// PATCH /api/projects/[id]
+const res = await fetch('https://makemov-ioe7.vercel.app/api/projects/' + projectId, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    synopsis: {
+      title: '적벽대전 — 화공의 밤',
+      titleEn: 'RED CLIFF — NIGHT OF FIRE',
+      info: {
+        genre: '역사 서사극',
+        runtime: '약 3분 (180초)',
+        tone: '장엄 / 비장 / 카타르시스',
+        audience: '역사 관심층, 밀리터리 팬',
+        format: '숏폼 시네마틱 (세로 9:16 / 가로)'
+      },
+      logline: '208년 겨울, ...',
+      // ... 전체 시놉시스 스키마는 아래 '데이터 스키마' 섹션 참조
+    }
+  })
+});`} />
+
+                <CodeBlock title="3. 시나리오 작성" code={`// PATCH /api/projects/[id]
+const res = await fetch('https://makemov-ioe7.vercel.app/api/projects/' + projectId, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    screenplay: [
+      { number: 1, scene_id: 'S1', heading: 'EXT. 장강 수면 — 새벽', action: '안개가...', dialogue: '', notes: '' },
+      { number: 2, scene_id: 'S2', heading: 'INT. 주유 진영 — 밤', action: '주유가...', dialogue: '주유: 때가 왔다.', notes: '' },
+      // ...
+    ]
+  })
+});`} />
+
+                <CodeBlock title="4. 줄콘티 작성" code={`// PATCH /api/projects/[id]
+const res = await fetch('https://makemov-ioe7.vercel.app/api/projects/' + projectId, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    conti: {
+      title: '적벽대전 줄콘티',
+      totalDuration: '약 180초',
+      promptContext: { era: '208, Three Kingdoms...', culture: '...', negatives: '...' },
+      scenes: [
+        { scene_id: 'S1', heading: 'EXT. 장강 — 새벽', scene_tc_start: '00:00.0', scene_tc_end: '00:25.0',
+          cuts: [
+            { cut_id: 'S1-C1', tc_start: '00:00.0', tc_end: '00:05.0', duration_sec: 5, shot: 'EWS', ... }
+          ]
+        }
+      ]
+    }
+  })
+});`} />
+
+                <CodeBlock title="curl 예시 (터미널/CLI)" code={`# 프로젝트 목록 조회
+curl https://makemov-ioe7.vercel.app/api/projects
+
+# 새 프로젝트 생성
+curl -X POST https://makemov-ioe7.vercel.app/api/projects \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"테스트 프로젝트","description":"AI가 만든 테스트"}'
+
+# 프로젝트 상세 조회
+curl https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID
+
+# 시놉시스 업데이트
+curl -X PATCH https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID \\
+  -H "Content-Type: application/json" \\
+  -d '{"synopsis":{"title":"...","info":{...},...}}'
+
+# 프로젝트 삭제
+curl -X DELETE https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID`} lang="bash" />
+            </Section>
+
             {/* ── API 함수 목록 ─────────────────── */}
             <Section icon="📚" title="API 함수 목록" id="api">
                 <ApiTable rows={[

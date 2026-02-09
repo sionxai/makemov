@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // makemov 프로젝트 — 누구나 읽기 가능, 쓰기는 서버(Admin SDK)만
+    match /makemov_projects/{projectId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 기존 다른 컬렉션 유지
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

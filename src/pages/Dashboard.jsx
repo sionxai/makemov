@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAllProjects, createProject, deleteProject, seedJinjuProject, seedRedcliffProject, seedDongnaeProject, seedChilcheonProject, seedJinju2Project } from '../db';
+import { getFirestoreProjects } from '../firebase/projectStore';
 import { CreateProjectModal, ConfirmModal } from '../components/Modal';
 
 export default function Dashboard() {
@@ -17,8 +18,24 @@ export default function Dashboard() {
         await seedChilcheonProject(); // 칠천량 해전 시드
         await seedRedcliffProject(); // 적벽대전 시드
         await seedJinju2Project(); // 2차 진주성전투 시드
-        const data = await getAllProjects();
-        setProjects(data);
+        const localData = await getAllProjects();
+
+        // Firestore에서 외부 AI가 생성한 프로젝트도 불러온다
+        let cloudData = [];
+        try {
+            cloudData = await getFirestoreProjects();
+        } catch (err) {
+            console.warn('[Dashboard] Firestore 조회 실패 (로컬만 표시):', err?.message);
+        }
+
+        // 로컬 + 클라우드 병합 (제목 기준 중복 제거, 로컬 우선)
+        const localTitles = new Set(localData.map(p => p.title));
+        const merged = [
+            ...localData,
+            ...cloudData.filter(p => !localTitles.has(p.title)).map(p => ({ ...p, _source: 'cloud' })),
+        ];
+
+        setProjects(merged);
         setLoading(false);
     }, []);
 
