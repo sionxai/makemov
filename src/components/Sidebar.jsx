@@ -27,6 +27,20 @@ export default function Sidebar() {
                     <span className="link-icon">📂</span>
                     <span>프로젝트</span>
                 </NavLink>
+                <NavLink
+                    to="/agent-guide"
+                    className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                >
+                    <span className="link-icon">🤖</span>
+                    <span>AI 가이드</span>
+                </NavLink>
+                <NavLink
+                    to="/image-tool"
+                    className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                >
+                    <span className="link-icon">🖼️</span>
+                    <span>이미지 보정 모듈</span>
+                </NavLink>
 
                 {isProjectPage && (
                     <>

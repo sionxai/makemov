@@ -1,0 +1,7 @@
+{
+  "name": "Visionary Creator - All-in-One Image Tool",
+  "description": "다양한 화각 생성, 캐릭터 시트 변환, 액션 시퀀스 생성 및 대량 톤앤매너 수정을 지원하는 종합 이미지 제작 툴입니다.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

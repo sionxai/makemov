@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { updateSynopsis } from '../db';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
 import { synopsisToMarkdown } from '../data/jinju-seed';
 
@@ -220,10 +219,8 @@ function DesignView({ data }) {
 }
 
 export default function SynopsisPage() {
-    const { project, reload } = useOutletContext();
+    const { project } = useOutletContext();
     const [view, setView] = useState('design');
-    const [editing, setEditing] = useState(false);
-    const [saving, setSaving] = useState(false);
 
     // structured data
     const data = project?.synopsis?.structured || null;
@@ -231,18 +228,6 @@ export default function SynopsisPage() {
     // 파생 데이터
     const mdText = useMemo(() => data ? synopsisToMarkdown(data) : (project?.synopsis?.content || ''), [data, project]);
     const jsonText = useMemo(() => data ? JSON.stringify(data, null, 2) : '{}', [data]);
-
-    useEffect(() => {
-        setEditing(!data && !project?.synopsis?.content);
-    }, [project, data]);
-
-    async function handleSave() {
-        setSaving(true);
-        // TODO: 편집 모드 — 나중에 폼 편집기로 확장
-        await reload();
-        setEditing(false);
-        setSaving(false);
-    }
 
     return (
         <div className="section" style={{ animation: 'fadeIn 300ms ease' }}>

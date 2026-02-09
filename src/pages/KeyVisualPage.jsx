@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { addKeyVisual, removeKeyVisual } from '../db';
+import { addKeyVisual } from '../db';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
 
 /* ──── 디자인 뷰 ──── */
@@ -49,13 +49,9 @@ function DesignView({ visuals }) {
 export default function KeyVisualPage() {
     const { project, reload } = useOutletContext();
     const [view, setView] = useState('design');
-    const [visuals, setVisuals] = useState(project?.keyvisuals || []);
+    const visuals = project?.keyvisuals || [];
     const [showAdd, setShowAdd] = useState(false);
     const [newVisual, setNewVisual] = useState({ title: '', prompt: '', imageUrl: '', scene: '' });
-
-    useEffect(() => {
-        setVisuals(project?.keyvisuals || []);
-    }, [project]);
 
     const jsonText = JSON.stringify(visuals, null, 2);
 
@@ -65,11 +61,6 @@ export default function KeyVisualPage() {
         await reload();
         setNewVisual({ title: '', prompt: '', imageUrl: '', scene: '' });
         setShowAdd(false);
-    }
-
-    async function handleRemove(visualId) {
-        await removeKeyVisual(project.id, visualId);
-        await reload();
     }
 
     return (

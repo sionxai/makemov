@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { updateConti } from '../db';
 import { CopyBlockCode } from '../components/CopyBlock';
@@ -374,10 +374,6 @@ export default function ContiPage() {
     const [view, setView] = useState('design');
     const [conti, setConti] = useState(project?.conti || { scenes: [], assumptions: [] });
     const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        setConti(project?.conti || { scenes: [], assumptions: [] });
-    }, [project]);
 
     const jsonText = JSON.stringify(conti, null, 2);
 

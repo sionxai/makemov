@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { updateStoryboard } from '../db';
 import { CopyBlockCode } from '../components/CopyBlock';
@@ -233,22 +233,6 @@ export default function StoryboardPage() {
         }
         return map;
     });
-
-    useEffect(() => {
-        const map = {};
-        if (project?.storyboard?.frames?.length) {
-            project.storyboard.frames.forEach(f => {
-                if (f.cut_id) map[f.cut_id] = f;
-            });
-        }
-        if (project?.storyboard?.sketches) {
-            Object.assign(map, project.storyboard.sketches);
-        }
-        if (Object.keys(map).length === 0 && contiScenes.length > 0) {
-            Object.assign(map, buildDefaultSketchMap(contiScenes));
-        }
-        setStoryboardMap(map);
-    }, [project]);
 
     async function handleSave() {
         setSaving(true);

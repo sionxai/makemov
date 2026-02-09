@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllProjects, createProject, deleteProject, seedJinjuProject } from '../db';
+import { getAllProjects, createProject, deleteProject, seedJinjuProject, seedRedcliffProject, seedDongnaeProject, seedChilcheonProject } from '../db';
 import { CreateProjectModal, ConfirmModal } from '../components/Modal';
 
 export default function Dashboard() {
@@ -10,17 +10,22 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    useEffect(() => {
-        loadProjects();
-    }, []);
-
-    async function loadProjects() {
+    const loadProjects = useCallback(async () => {
         setLoading(true);
         await seedJinjuProject(); // 시드 데이터 자동 생성 (이미 있으면 무시)
+        await seedDongnaeProject(); // 동래성 전투 시드
+        await seedChilcheonProject(); // 칠천량 해전 시드
+        await seedRedcliffProject(); // 적벽대전 시드
         const data = await getAllProjects();
         setProjects(data);
         setLoading(false);
-    }
+    }, []);
+
+    // Initial sync from IndexedDB.
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        loadProjects();
+    }, [loadProjects]);
 
     async function handleCreate(title, description) {
         const project = await createProject(title, description);
@@ -37,8 +42,9 @@ export default function Dashboard() {
 
     function getCompletionCount(project) {
         let count = 0;
-        if (project.synopsis?.content) count++;
+        if (project.synopsis?.content || project.synopsis?.structured) count++;
         if (project.screenplay?.scenes?.length > 0) count++;
+        if (project.conti?.scenes?.length > 0) count++;
         if (project.storyboard?.frames?.length > 0) count++;
         if (project.keyvisuals?.length > 0) count++;
         if (project.productionPrompts?.length > 0) count++;
@@ -111,16 +117,17 @@ export default function Dashboard() {
                             <div className="project-meta">
                                 <span>{formatDate(project.updatedAt)}</span>
                                 <span>·</span>
-                                <span>진행 {getCompletionCount(project)}/5</span>
+                                <span>진행 {getCompletionCount(project)}/6</span>
                                 <div style={{ flex: 1 }} />
                                 <div style={{
                                     display: 'flex',
                                     gap: '2px',
                                 }}>
-                                    {['synopsis', 'screenplay', 'storyboard', 'keyvisual', 'prompts'].map((step, i) => {
+                                    {['synopsis', 'screenplay', 'conti', 'storyboard', 'keyvisual', 'prompts'].map((step, i) => {
                                         const filled = [
-                                            project.synopsis?.content,
+                                            project.synopsis?.content || project.synopsis?.structured,
                                             project.screenplay?.scenes?.length > 0,
+                                            project.conti?.scenes?.length > 0,
                                             project.storyboard?.frames?.length > 0,
                                             project.keyvisuals?.length > 0,
                                             project.productionPrompts?.length > 0,

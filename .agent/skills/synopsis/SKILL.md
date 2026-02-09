@@ -37,57 +37,71 @@ description: 아이디어를 영상 제작의 기준 시놉시스로 구조화�
 - 사운드 방향
 - 핵심 장면 리스트(3~7개)
 
-2) 기계 처리용 JSON
+2) 기계 처리용 JSON (**UI 렌더링 표준 스키마**)
+
+> ⚠️ 이 스키마가 `project.synopsis.structured`에 그대로 저장되어 UI에 반영된다.
+> 필드명을 절대 변경하지 말 것.
+
 ```json
 {
   "title": "",
-  "basic_info": {
+  "titleEn": "",
+  "info": {
     "genre": "",
-    "runtime_sec": 0,
-    "tone_mood": "",
-    "target_audience": "",
+    "runtime": "",
+    "tone": "",
+    "audience": "",
     "format": ""
   },
   "logline": "",
   "theme": "",
-  "synopsis": {
-    "setup": "",
-    "confrontation": "",
-    "crisis": "",
-    "resolution": ""
-  },
+  "acts": [
+    {
+      "title": "도입",
+      "subtitle": "DAY 1-2 — 먹구름",
+      "content": "여러 문단을 \\n\\n 으로 구분하여 작성"
+    }
+  ],
   "characters": [
     {
       "name": "",
+      "nameHanja": "",
       "role": "",
+      "age": "",
       "appearance": "",
       "personality": "",
       "motivation": "",
       "arc": ""
     }
   ],
-  "visual_tone": {
+  "visualTone": {
     "palette": "",
     "lighting": "",
-    "camera_style": "",
-    "references": []
+    "camera": "",
+    "references": ""
   },
-  "sound_direction": {
-    "bgm_tone": "",
-    "sfx_keywords": [],
-    "narration": "none"
+  "sound": {
+    "bgm": "",
+    "sfx": "",
+    "narration": ""
   },
-  "core_scenes": [
+  "keyScenes": [
     {
-      "scene_id": "S1",
       "title": "",
-      "summary": "",
-      "emotion_goal": ""
+      "description": ""
     }
-  ],
-  "assumptions": []
+  ]
 }
 ```
+
+### 스키마 필드 규칙
+- `acts`: 4막 구조. title(한글 막 제목), subtitle(시간/키워드), content(본문, 문단 구분 `\n\n`).
+- `characters.nameHanja`: 한자명이 없으면 빈 문자열 `""`.
+- `characters.age`: 연령대가 불분명하면 빈 문자열 `""`.
+- `visualTone.references`: 문자열로 쉼표 구분 (배열 아님).
+- `sound.sfx`: 쉼표 구분 문자열.
+- `keyScenes`: 3~8개. title(짧고 강렬), description(1줄 요약).
+
 
 ## 작성 워크플로
 1. 입력을 구조화하고 빈 항목을 식별한다.

@@ -7,7 +7,7 @@ makemov 프리프로덕션 파이프라인 스킬 인덱스.
 
 ## 파이프라인
 1. 시놉시스: `synopsis/SKILL.md`
-2. 시나리오: `screenplay/SKILL.md`
+2. 시나리오: `screenplay/SKILL.md` ← v2.0 런타임 밀도 공식 + ACT-씬 정합 규칙
 3. 줄콘티: `storyboard/SKILL.md` ← v2.0 전면 개편 (스케치→실사 프롬프트)
 4. 키비주얼: `keyvisual/SKILL.md`
 5. 영상화: `videoproduction/SKILL.md`

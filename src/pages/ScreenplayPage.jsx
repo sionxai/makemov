@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { updateScreenplay } from '../db';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
@@ -19,7 +19,7 @@ function DesignView({ scenes }) {
             <div className="sp-header">
                 <div className="sp-header-badge">SCREENPLAY</div>
                 <h1 className="sp-header-title">시나리오</h1>
-                <p className="sp-header-sub">{scenes.length}개 씬 · 진주성의 최후 9일</p>
+                <p className="sp-header-sub">{scenes.length}개 씬</p>
             </div>
 
             {/* 타임라인 */}
@@ -184,10 +184,6 @@ export default function ScreenplayPage() {
     const [view, setView] = useState('design');
     const [scenes, setScenes] = useState(project?.screenplay?.scenes || []);
     const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        setScenes(project?.screenplay?.scenes || []);
-    }, [project]);
 
     const mdText = useMemo(() => screenplayToMarkdown(scenes), [scenes]);
     const jsonText = useMemo(() => JSON.stringify(scenes, null, 2), [scenes]);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, Outlet, useNavigate } from 'react-router-dom';
 import { getProject, updateProject } from '../db';
 import { Pipeline } from '../components/Pipeline';
@@ -9,20 +9,23 @@ export default function ProjectLayout() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    useEffect(() => {
-        loadProject();
-    }, [id]);
-
-    async function loadProject() {
+    const loadProject = useCallback(async () => {
         setLoading(true);
         const data = await getProject(id);
         if (!data) {
+            setLoading(false);
             navigate('/');
             return;
         }
         setProject(data);
         setLoading(false);
-    }
+    }, [id, navigate]);
+
+    // Initial sync from IndexedDB for route id.
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        loadProject();
+    }, [loadProject]);
 
     async function handleProjectUpdate(updates) {
         const updated = await updateProject(id, updates);
@@ -68,7 +71,10 @@ export default function ProjectLayout() {
 
             <Pipeline projectId={id} project={project} />
 
-            <Outlet context={{ project, setProject, onUpdate: handleProjectUpdate, reload: loadProject }} />
+            <Outlet
+                key={`${id}:${project.updatedAt || ''}`}
+                context={{ project, setProject, onUpdate: handleProjectUpdate, reload: loadProject }}
+            />
         </div>
     );
 }

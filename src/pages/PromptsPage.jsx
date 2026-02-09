@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { addProductionPrompt, removeProductionPrompt } from '../db';
+import { addProductionPrompt } from '../db';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
 
 const PROMPT_TYPES = [
@@ -76,13 +76,9 @@ function DesignView({ prompts }) {
 export default function PromptsPage() {
     const { project, reload } = useOutletContext();
     const [view, setView] = useState('design');
-    const [prompts, setPrompts] = useState(project?.productionPrompts || []);
+    const prompts = project?.productionPrompts || [];
     const [showAdd, setShowAdd] = useState(false);
     const [newPrompt, setNewPrompt] = useState({ type: 'sora', title: '', prompt: '', scene: '' });
-
-    useEffect(() => {
-        setPrompts(project?.productionPrompts || []);
-    }, [project]);
 
     const jsonText = JSON.stringify(prompts, null, 2);
 
@@ -92,11 +88,6 @@ export default function PromptsPage() {
         await reload();
         setNewPrompt({ type: 'sora', title: '', prompt: '', scene: '' });
         setShowAdd(false);
-    }
-
-    async function handleRemove(promptId) {
-        await removeProductionPrompt(project.id, promptId);
-        await reload();
     }
 
     return (
