@@ -33,7 +33,7 @@ export default async function handler(req, res) {
             if (body.conti !== undefined) update.conti = { ...body.conti, updatedAt: now() };
             if (body.storyboard !== undefined) update.storyboard = body.storyboard;
             if (body.keyvisuals !== undefined) update.keyvisuals = body.keyvisuals;
-            if (body.prompts !== undefined) update.prompts = body.prompts;
+            if (body.productionPrompts !== undefined) update.productionPrompts = body.productionPrompts;
             if (body.title) update.title = body.title;
             if (body.description !== undefined) update.description = body.description;
             if (body.status) update.status = body.status;

@@ -34,7 +34,7 @@ export default async function handler(req, res) {
                 synopsis: { structured: null, updatedAt: null },
                 screenplay: { scenes: [], updatedAt: null },
                 conti: { scenes: [], updatedAt: null },
-                storyboard: [], keyvisuals: [], prompts: [],
+                storyboard: { frames: [] }, keyvisuals: [], productionPrompts: [],
             };
             const ref = await col.add(project);
             return res.status(201).json({ message: `Project created: ${ref.id}`, project: { id: ref.id, ...project } });

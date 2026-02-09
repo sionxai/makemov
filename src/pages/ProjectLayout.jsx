@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Outlet, useNavigate } from 'react-router-dom';
 import { getProject, updateProject } from '../db';
+import { getFirestoreProject } from '../firebase/projectStore';
 import { Pipeline } from '../components/Pipeline';
 
 export default function ProjectLayout() {
@@ -11,7 +12,15 @@ export default function ProjectLayout() {
 
     const loadProject = useCallback(async () => {
         setLoading(true);
-        const data = await getProject(id);
+        // 1) IndexedDB (로컬 시드) 먼저 시도
+        let data = await getProject(id);
+        // 2) 없으면 Firestore (클라우드) 시도
+        if (!data) {
+            try {
+                data = await getFirestoreProject(id);
+                if (data) data._source = 'cloud';
+            } catch { /* ignore */ }
+        }
         if (!data) {
             setLoading(false);
             navigate('/');
@@ -28,6 +37,11 @@ export default function ProjectLayout() {
     }, [loadProject]);
 
     async function handleProjectUpdate(updates) {
+        // 클라우드 프로젝트는 현재 읽기 전용 (REST API로만 수정)
+        if (project?._source === 'cloud') {
+            console.warn('[ProjectLayout] Cloud project is read-only in UI');
+            return project;
+        }
         const updated = await updateProject(id, updates);
         setProject(updated);
         return updated;

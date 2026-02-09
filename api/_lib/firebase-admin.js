@@ -28,9 +28,18 @@ export function getProjectsCollection() {
 }
 
 export function verifyApiKey(req) {
+    // GET/OPTIONS는 항상 공개 (public read)
+    if (req.method === 'GET' || req.method === 'OPTIONS') return true;
+
     const key = req.headers['x-api-key'] || (req.headers['authorization'] || '').replace('Bearer ', '');
     const expected = process.env.MAKEMOV_API_KEY;
-    if (!expected) return true;
+
+    // API 키가 미설정이면 쓰기 차단 (보안 기본값)
+    if (!expected) {
+        console.warn('[verifyApiKey] MAKEMOV_API_KEY not set — blocking write request');
+        return false;
+    }
+
     return key === expected;
 }
 
