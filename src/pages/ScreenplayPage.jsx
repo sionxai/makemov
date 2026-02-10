@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { updateScreenplay } from '../db';
+import { updateFirestoreScreenplay } from '../firebase/projectStore';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
 import { screenplayToMarkdown } from '../data/jinju-seed';
 
@@ -190,8 +190,12 @@ export default function ScreenplayPage() {
 
     async function handleSave() {
         setSaving(true);
-        await updateScreenplay(project.id, scenes);
-        await reload();
+        try {
+            await updateFirestoreScreenplay(project.id, scenes);
+            await reload();
+        } catch (err) {
+            console.error('[ScreenplayPage] 저장 실패:', err?.message);
+        }
         setSaving(false);
     }
 

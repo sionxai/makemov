@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllProjects, createProject, deleteProject, seedJinjuProject, seedRedcliffProject, seedDongnaeProject, seedChilcheonProject, seedJinju2Project } from '../db';
-import { getFirestoreProjects } from '../firebase/projectStore';
+import {
+    getFirestoreProjects,
+    createFirestoreProject,
+    deleteFirestoreProject,
+} from '../firebase/projectStore';
 import { CreateProjectModal, ConfirmModal } from '../components/Modal';
 
 export default function Dashboard() {
@@ -13,46 +16,28 @@ export default function Dashboard() {
 
     const loadProjects = useCallback(async () => {
         setLoading(true);
-        await seedJinjuProject(); // 시드 데이터 자동 생성 (이미 있으면 무시)
-        await seedDongnaeProject(); // 동래성 전투 시드
-        await seedChilcheonProject(); // 칠천량 해전 시드
-        await seedRedcliffProject(); // 적벽대전 시드
-        await seedJinju2Project(); // 2차 진주성전투 시드
-        const localData = await getAllProjects();
-
-        // Firestore에서 외부 AI가 생성한 프로젝트도 불러온다
-        let cloudData = [];
         try {
-            cloudData = await getFirestoreProjects();
+            const data = await getFirestoreProjects();
+            setProjects(data);
         } catch (err) {
-            console.warn('[Dashboard] Firestore 조회 실패 (로컬만 표시):', err?.message);
+            console.error('[Dashboard] 프로젝트 로딩 실패:', err?.message);
+            setProjects([]);
         }
-
-        // 로컬 + 클라우드 병합 (제목 기준 중복 제거, 로컬 우선)
-        const localTitles = new Set(localData.map(p => p.title));
-        const merged = [
-            ...localData,
-            ...cloudData.filter(p => !localTitles.has(p.title)).map(p => ({ ...p, _source: 'cloud' })),
-        ];
-
-        setProjects(merged);
         setLoading(false);
     }, []);
 
-    // Initial sync from IndexedDB.
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         loadProjects();
     }, [loadProjects]);
 
     async function handleCreate(title, description) {
-        const project = await createProject(title, description);
+        const project = await createFirestoreProject(title, description);
         navigate(`/project/${project.id}/synopsis`);
     }
 
     async function handleDelete() {
         if (deleteTarget) {
-            await deleteProject(deleteTarget);
+            await deleteFirestoreProject(deleteTarget);
             setDeleteTarget(null);
             loadProjects();
         }
@@ -70,6 +55,7 @@ export default function Dashboard() {
     }
 
     function formatDate(dateStr) {
+        if (!dateStr) return '—';
         const d = new Date(dateStr);
         return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
     }

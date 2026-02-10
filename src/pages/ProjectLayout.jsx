@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Outlet, useNavigate } from 'react-router-dom';
-import { getProject, updateProject } from '../db';
-import { getFirestoreProject } from '../firebase/projectStore';
+import { getFirestoreProject, updateFirestoreProject } from '../firebase/projectStore';
 import { Pipeline } from '../components/Pipeline';
 
 export default function ProjectLayout() {
@@ -12,39 +11,34 @@ export default function ProjectLayout() {
 
     const loadProject = useCallback(async () => {
         setLoading(true);
-        // 1) IndexedDB (로컬 시드) 먼저 시도
-        let data = await getProject(id);
-        // 2) 없으면 Firestore (클라우드) 시도
-        if (!data) {
-            try {
-                data = await getFirestoreProject(id);
-                if (data) data._source = 'cloud';
-            } catch { /* ignore */ }
-        }
-        if (!data) {
-            setLoading(false);
+        try {
+            const data = await getFirestoreProject(id);
+            if (!data) {
+                setLoading(false);
+                navigate('/');
+                return;
+            }
+            setProject(data);
+        } catch (err) {
+            console.error('[ProjectLayout] 프로젝트 로딩 실패:', err?.message);
             navigate('/');
-            return;
         }
-        setProject(data);
         setLoading(false);
     }, [id, navigate]);
 
-    // Initial sync from IndexedDB for route id.
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         loadProject();
     }, [loadProject]);
 
     async function handleProjectUpdate(updates) {
-        // 클라우드 프로젝트는 현재 읽기 전용 (REST API로만 수정)
-        if (project?._source === 'cloud') {
-            console.warn('[ProjectLayout] Cloud project is read-only in UI');
+        try {
+            const updated = await updateFirestoreProject(id, updates);
+            setProject(updated);
+            return updated;
+        } catch (err) {
+            console.error('[ProjectLayout] 업데이트 실패:', err?.message);
             return project;
         }
-        const updated = await updateProject(id, updates);
-        setProject(updated);
-        return updated;
     }
 
     if (loading) {

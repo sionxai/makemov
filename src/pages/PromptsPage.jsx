@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { addProductionPrompt } from '../db';
+import { addFirestoreProductionPrompt } from '../firebase/projectStore';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
 
 const PROMPT_TYPES = [
@@ -84,8 +84,12 @@ export default function PromptsPage() {
 
     async function handleAdd() {
         if (!newPrompt.prompt.trim()) return;
-        await addProductionPrompt(project.id, newPrompt);
-        await reload();
+        try {
+            await addFirestoreProductionPrompt(project.id, newPrompt);
+            await reload();
+        } catch (err) {
+            console.error('[PromptsPage] 추가 실패:', err?.message);
+        }
         setNewPrompt({ type: 'sora', title: '', prompt: '', scene: '' });
         setShowAdd(false);
     }

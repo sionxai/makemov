@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { updateConti } from '../db';
+import { updateFirestoreConti } from '../firebase/projectStore';
 import { CopyBlockCode } from '../components/CopyBlock';
 
 /* ──── 프롬프트 복사 버튼 ──── */
@@ -379,8 +379,12 @@ export default function ContiPage() {
 
     async function handleSave() {
         setSaving(true);
-        await updateConti(project.id, conti);
-        await reload();
+        try {
+            await updateFirestoreConti(project.id, conti);
+            await reload();
+        } catch (err) {
+            console.error('[ContiPage] 저장 실패:', err?.message);
+        }
         setSaving(false);
     }
 

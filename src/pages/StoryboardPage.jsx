@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { updateStoryboard } from '../db';
+import { updateFirestoreStoryboard } from '../firebase/projectStore';
 import { CopyBlockCode } from '../components/CopyBlock';
 
 /* ──── 스케치 이미지 (로딩 실패 시 플레이스홀더 폴백) ──── */
@@ -236,10 +236,13 @@ export default function StoryboardPage() {
 
     async function handleSave() {
         setSaving(true);
-        // 맵을 frames 배열 + sketches 맵 둘 다 저장 (호환성)
         const frames = Object.values(storyboardMap);
-        await updateStoryboard(project.id, frames);
-        await reload();
+        try {
+            await updateFirestoreStoryboard(project.id, frames);
+            await reload();
+        } catch (err) {
+            console.error('[StoryboardPage] 저장 실패:', err?.message);
+        }
         setSaving(false);
     }
 

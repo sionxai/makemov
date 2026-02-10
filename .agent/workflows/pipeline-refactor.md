@@ -2,241 +2,140 @@
 description: makemov 파이프라인 리팩토링 — 제작→수정→재수정 효율화
 ---
 
-# makemov 파이프라인 리팩토링
+# makemov 파이프라인 리팩토링: Firestore SSOT
 
-## 문제 진단
+## 목표
 
-### 현재 구조 (비효율적)
+> **데이터 수정 지점을 1곳(Firestore)으로 고정.** IDB 혼합 로딩 제거.
+
+## 현재 아키텍처 (Before)
+
 ```
-시온님 요청 → 에온이 seed JS 파일 생성 → db.js에 import 추가
-→ Dashboard.jsx에 seed 호출 추가 → 브라우저 확인
-→ 데이터 구조 불일치 → 크래시 → 디버그 → 재생성
+                     ┌─ src/data/*.js (시드/템플릿)
+                     │
+                     ▼
+Dashboard ──→ seedXxxProject() ──→ IndexedDB ──→ UI (로컬 우선)
+                                                     ↑
+                                        Firestore ──┘ (보조, 중복 제거)
 ```
 
-### 핵심 문제 3가지
-1. **스킬 양식 ≠ UI 양식**: synopsis/SKILL.md JSON과 DesignView가 기대하는 필드가 다름
-2. **하드코딩 시드**: 프로젝트마다 seed 파일/import/호출을 수동 추가해야 함
-3. **수정 불편**: 데이터를 고치려면 소스코드를 편집하고 IndexedDB 캐시도 처리해야 함
+**문제:**
+- IDB에 시드 데이터가 고착 (버전 수동 관리)
+- Firestore에 push해도 IDB가 우선이라 무시됨
+- 수정 시 3곳 동기화 필요
+
+## 리팩토링 후 아키텍처 (After)
+
+```
+src/data/*.js (템플릿/fixture)
+      │
+      │ 최초 1회: initTemplates()
+      ▼
+  Firestore ◀──── REST API (/api/projects) ◀──── 외부 AI
+      │
+      │ 읽기 (getFirestoreProjects / getFirestoreProject)
+      ▼
+    UI (단일 경로)
+```
+
+**해결:**
+- 수정 지점 = Firestore 1곳
+- UI 읽기 = Firestore 1곳
+- `src/data/*.js` = 초기 템플릿 (SSOT 아님)
+- IDB = 제거
 
 ---
 
-## 리팩토링 목표
+## 영향 범위 분석
 
-```
-시온님 요청 → 에온이 스킬 참조하여 데이터 생성
-→ db.js API 호출로 IndexedDB에 직접 저장
-→ UI 자동 반영 (새로고침만)
-→ 수정 요청 → 에온이 해당 필드만 API로 패치
-```
+### 변경이 필요한 파일
 
-**핵심 원칙: 소스코드 수정 없이 데이터 CRUD만으로 제작/수정/재수정**
+| 파일 | 현재 역할 | 변경 |
+|------|----------|------|
+| `src/db.js` | IDB CRUD + 시드 + 검증 | IDB 제거, 검증 유틸은 보존 |
+| `src/pages/Dashboard.jsx` | IDB 시드 + 혼합 로딩 | Firestore only 로딩 |
+| `src/pages/ProjectLayout.jsx` | IDB → Firestore 폴백 | Firestore only 로딩 |
+| `src/pages/ContiPage.jsx` | `updateConti` (IDB 저장) | Firestore API 저장 |
+| `src/pages/ScreenplayPage.jsx` | `updateScreenplay` (IDB) | Firestore API 저장 |
+| `src/pages/StoryboardPage.jsx` | `updateStoryboard` (IDB) | Firestore API 저장 |
+| `src/pages/KeyVisualPage.jsx` | `addKeyVisual` (IDB) | Firestore API 저장 |
+| `src/pages/PromptsPage.jsx` | `addProductionPrompt` (IDB) | Firestore API 저장 |
+| `src/firebase/projectStore.js` | 읽기 전용 | 읽기 + 쓰기 |
+| `src/main.jsx` | window.__makemov (IDB) | 제거 또는 Firestore로 변경 |
 
----
+### 변경하지 않는 파일
 
-## Phase 1: 스키마 통일
-
-### 1-1. 시놉시스 스키마 통일 (UI 기준으로 통합)
-
-UI가 기대하는 구조 = 표준 스키마:
-
-```javascript
-// project.synopsis.structured 의 구조
-{
-    title: '',
-    titleEn: '',
-    info: {
-        genre: '',
-        runtime: '',
-        tone: '',
-        audience: '',
-        format: '',
-    },
-    logline: '',
-    theme: '',
-    acts: [{ title: '', subtitle: '', content: '' }],
-    characters: [{
-        name: '', nameHanja: '', role: '', age: '',
-        appearance: '', personality: '', motivation: '', arc: '',
-    }],
-    visualTone: {
-        palette: '', lighting: '', camera: '', references: '',
-    },
-    sound: {
-        bgm: '', sfx: '', narration: '',
-    },
-    keyScenes: [{ title: '', description: '' }],
-}
-```
-
-**작업**: synopsis/SKILL.md의 JSON 출력 규격을 위 구조로 수정
-
-### 1-2. 시나리오 스키마 확인
-
-UI가 기대하는 구조:
-```javascript
-// project.screenplay.scenes[]
-{
-    scene_id: 'S1',
-    slugline: '',
-    tc_start: '',
-    tc_end: '',
-    duration_sec: 0,
-    objective: '',
-    conflict: '',
-    turn: '',
-    beats: [{ beat_id: '', type: '', duration_sec: 0, content: '', camera_hint: '' }],
-    transition_out: '',
-}
-```
-
-### 1-3. 줄콘티 스키마 확인
-
-UI가 기대하는 구조:
-```javascript
-// project.conti (전체)
-{
-    title: '',
-    totalDuration: '',
-    promptContext: { era: '', culture: '', negatives: '' },
-    scenes: [{
-        scene_id: '',
-        heading: '',
-        scene_tc_start: '',
-        scene_tc_end: '',
-        cuts: [{
-            cut_id: '',
-            tc_start: '',
-            tc_end: '',
-            duration_sec: 0,
-            shot: '',
-            angle: '',
-            camera_move: '',
-            visual: '',
-            dialogue: '',
-            sfx: '',
-            bgm: '',
-            transition_out: '',
-            sketch_prompt: '',
-            keyvisual_priority: '',
-        }],
-    }],
-    assumptions: [],
-}
-```
+| 파일 | 이유 |
+|------|------|
+| `src/data/*.js` | 템플릿으로 보존 (코드 삭제 없음) |
+| `api/projects.js` | 이미 Firestore CRUD (변경 불필요) |
+| `api/projects/[id].js` | 이미 Firestore CRUD (변경 불필요) |
+| `src/pages/SynopsisPage.jsx` | 읽기 전용 (project context에서 받음) |
+| `src/pages/AgentGuidePage.jsx` | 문서 페이지 (데이터 비의존) |
+| `src/components/*` | UI 컴포넌트 (데이터 비의존) |
 
 ---
 
-## Phase 2: DB API 정비
+## 단계별 실행 계획
 
-### 2-1. updateSynopsis 수정
+### Phase 1: projectStore.js 확장 (쓰기 추가)
+- Firestore 클라이언트로 직접 쓰기 OR REST API(`/api/projects/{id}`) PATCH 호출
+- **추천: REST API PATCH** (API 키 필요하지만 서버 검증 일관성 유지)
+- 단, UI에서 읽기 전용이면 쓰기는 불필요 (현재 클라우드 프로젝트는 read-only)
+- **결정 필요**: UI에서 Firestore 프로젝트 편집 가능하게 할 것인가?
 
-현재 `updateSynopsis(id, content)` → content를 평문으로 저장
-수정 → `updateSynopsis(id, structured)` → structured 객체로 저장
+### Phase 2: Dashboard.jsx — Firestore only 로딩
+- `seedXxxProject()` 호출 제거
+- `getAllProjects()` (IDB) 제거
+- `getFirestoreProjects()` 만 사용
+- 템플릿 초기화: 별도 "템플릿에서 생성" 버튼
 
-```javascript
-export async function updateSynopsis(id, structured) {
-    return updateProject(id, {
-        synopsis: { structured, updatedAt: new Date().toISOString() },
-    });
-}
-```
+### Phase 3: ProjectLayout.jsx — Firestore only 로딩
+- `getProject()` (IDB) 제거
+- `getFirestoreProject()` 만 사용
+- 클라우드 프로젝트의 `_source: 'cloud'` 구분 및 read-only 제한 제거
 
-### 2-2. 나머지 API는 이미 올바르게 동작
-- `updateScreenplay(id, scenes)` ✅
-- `updateConti(id, contiData)` ✅
-- `updateStoryboard(id, frames)` ✅
+### Phase 4: 각 페이지 저장 로직 전환
+- `updateConti`, `updateScreenplay` 등 IDB 함수 → Firestore API PATCH로 교체
+- 검증 로직(validateSynopsisStructured, validateScreenplay)은 별도 유틸로 분리 + 보존
 
----
+### Phase 5: db.js 정리 + IDB 제거
+- 시드 함수 전체 제거
+- IDB CRUD 제거
+- 검증 함수만 `src/utils/validators.js`로 이동
+- `idb` 패키지 제거
 
-## Phase 3: Seed 의존성 제거
+### Phase 6: 시드 데이터 → Firestore 초기 마이그레이션
+- 로컬 시드 데이터 중 Firestore에 없는 것만 API로 push
+- 1회 실행 스크립트 (`scripts/migrate-seeds.js`)
 
-### 3-1. 새 프로젝트 = UI에서 생성 + API로 데이터 주입
-
-워크플로:
-1. 시온님이 UI에서 "새 프로젝트" 버튼 → 빈 프로젝트 생성 (이미 있는 기능)
-2. 에온이 프로젝트 ID를 확인
-3. 에온이 스킬 참조하여 각 단계 데이터를 생성
-4. 에온이 브라우저에서 JS 실행으로 API 호출하여 데이터 주입
-   ```javascript
-   // 브라우저 콘솔에서 실행
-   import { updateSynopsis } from '/src/db.js';
-   await updateSynopsis('proj_xxx', synopsisData);
-   ```
-   또는 db.js 함수를 window에 노출시켜서 에온이 직접 호출
-
-### 3-2. 기존 seed 함수 유지 (진주성/적벽대전)
-
-기존 프로젝트의 seed는 유지하되, 새 프로젝트부터는 seed 불필요.
-
-### 3-3. window에 API 노출 (개발 모드)
-
-```javascript
-// main.jsx 또는 App.jsx에 추가
-if (import.meta.env.DEV) {
-    window.__makemov = {
-        updateSynopsis,
-        updateScreenplay,
-        updateConti,
-        updateStoryboard,
-        getProject,
-        getAllProjects,
-    };
-}
-```
-
-이렇게 하면 에온이 브라우저에서:
-```javascript
-await window.__makemov.updateSynopsis('proj_xxx', data);
-```
-로 직접 데이터를 주입/수정 가능.
+### Phase 7: 정리 + 검증
+- `window.__makemov` 업데이트 또는 제거
+- 전체 페이지 동작 검증
+- git commit
 
 ---
 
-## Phase 4: 스킬 문서 업데이트
+## 리스크 & 완화
 
-### 4-1. synopsis/SKILL.md — JSON 출력 규격을 Phase 1-1 스키마로 수정
-### 4-2. SKILL_INDEX.md — 운영 원칙에 "API 주입 방식" 추가
-### 4-3. 각 스킬에 "데이터 주입 방법" 섹션 추가
-
----
-
-## Phase 5: 에온 워크플로 표준화
-
-### 새 프로젝트 제작 흐름
-```
-1. 시온님: 주제/스토리 전달
-2. 에온: synopsis/SKILL.md 참조 → 시놉시스 JSON 생성
-3. 에온: 브라우저에서 window.__makemov.updateSynopsis(id, data) 실행
-4. 시온님: UI에서 확인 → 피드백
-5. 에온: 해당 필드만 패치하여 재주입
-6. 시온님: 승인 → 다음 단계로
-```
-
-### 수정 흐름 (핵심!)
-```
-시온님: "제갈량 캐릭터 설명 수정해줘"
-에온: synopsis.characters에서 해당 항목만 수정
-에온: window.__makemov.updateSynopsis(id, updatedData) 실행
-→ UI 즉시 반영 (새로고침)
-```
+| 리스크 | 완화 방법 |
+|--------|----------|
+| Firestore 느리면 UI 렌더링 지연 | 로딩 스켈레톤 + 캐시 전략 |
+| Firestore 다운 시 서비스 불가 | try/catch + "서비스 일시 중단" 안내 |
+| API 키 노출 위험 | 읽기는 공개, 쓰기는 서버리스 함수 경유 |
+| 기존 IDB 데이터 유실 | 마이그레이션 스크립트로 Firestore에 백업 |
+| UI 쓰기 시 API 키 관리 | Option A: 클라이언트 Firestore SDK 직접 쓰기 (Rules로 보호) |
+|                        | Option B: /api PATCH + 프론트에서 키 관리 |
 
 ---
 
-## 실행 순서
+## 성공 조건 체크리스트
 
-// turbo-all
-
-1. Phase 2-1: `updateSynopsis` API 수정 (structured 지원)
-2. Phase 3-3: window에 API 노출 (개발 모드)
-3. Phase 1-1: synopsis/SKILL.md 스키마를 UI 기준으로 통일
-4. Phase 4: 스킬 문서 업데이트
-5. 적벽대전 프로젝트로 새 워크플로 검증
-
----
-
-## 성공 기준
-
-- [ ] 새 프로젝트 생성 시 소스코드 수정 0건
-- [ ] 시놉시스 데이터를 브라우저 콘솔에서 직접 주입 가능
-- [ ] 수정 요청 시 해당 필드만 패치하여 UI 즉시 반영
-- [ ] 스킬 JSON 출력 = UI 렌더링 입력 (변환 불필요)
+- [ ] 데이터 수정 지점이 1곳 (Firestore)
+- [ ] UI 읽기 경로가 단일 (Firestore)
+- [ ] `src/data/*.js` 수정해도 UI에 영향 없음
+- [ ] IDB 완전 제거
+- [ ] 기존 프로젝트 데이터 Firestore에 존재
+- [ ] 대시보드 프로젝트 목록 정상 표시
+- [ ] 각 페이지(시놉시스/시나리오/콘티/키비주얼/프롬프트) 정상 표시
+- [ ] 외부 AI의 API 워크플로 영향 없음

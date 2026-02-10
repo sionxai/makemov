@@ -3,22 +3,32 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 
-// --- DEV: DB API를 window에 노출 (에온이 브라우저에서 데이터 직접 주입/수정) ---
+// --- DEV: Firestore API를 window에 노출 (디버깅용) ---
 import {
-  getAllProjects, getProject, createProject, updateProject, deleteProject,
-  updateSynopsis, updateScreenplay, updateConti, updateStoryboard,
-  addKeyVisual, removeKeyVisual, addProductionPrompt, removeProductionPrompt,
-  exportProject, importProject,
-} from './db'
+  getFirestoreProjects, getFirestoreProject,
+  createFirestoreProject, updateFirestoreProject, deleteFirestoreProject,
+  updateFirestoreSynopsis, updateFirestoreScreenplay, updateFirestoreConti, updateFirestoreStoryboard,
+  addFirestoreKeyVisual, removeFirestoreKeyVisual,
+  addFirestoreProductionPrompt, removeFirestoreProductionPrompt,
+} from './firebase/projectStore'
 
 if (import.meta.env.DEV) {
   window.__makemov = {
-    getAllProjects, getProject, createProject, updateProject, deleteProject,
-    updateSynopsis, updateScreenplay, updateConti, updateStoryboard,
-    addKeyVisual, removeKeyVisual, addProductionPrompt, removeProductionPrompt,
-    exportProject, importProject,
+    getAll: getFirestoreProjects,
+    get: getFirestoreProject,
+    create: createFirestoreProject,
+    update: updateFirestoreProject,
+    delete: deleteFirestoreProject,
+    updateSynopsis: updateFirestoreSynopsis,
+    updateScreenplay: updateFirestoreScreenplay,
+    updateConti: updateFirestoreConti,
+    updateStoryboard: updateFirestoreStoryboard,
+    addKeyVisual: addFirestoreKeyVisual,
+    removeKeyVisual: removeFirestoreKeyVisual,
+    addPrompt: addFirestoreProductionPrompt,
+    removePrompt: removeFirestoreProductionPrompt,
   }
-  console.log('🎬 [DEV] window.__makemov API 활성화 — 콘솔에서 데이터 직접 조작 가능')
+  console.log('🎬 [DEV] window.__makemov API 활성화 (Firestore SSOT)')
 }
 
 createRoot(document.getElementById('root')).render(

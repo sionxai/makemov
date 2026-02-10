@@ -2,10 +2,16 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // makemov 프로젝트 — 누구나 읽기 가능, 쓰기는 서버(Admin SDK)만
+    // makemov 프로젝트 — 누구나 읽기/쓰기 가능
+    // 쓰기는 필수 필드 검증으로 보호
     match /makemov_projects/{projectId} {
       allow read: if true;
-      allow write: if false;
+      allow create: if request.resource.data.keys().hasAll(['title', 'status', 'createdAt', 'updatedAt'])
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() > 0;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['title', 'description', 'status', 'synopsis', 'screenplay', 'conti', 'storyboard', 'keyvisuals', 'productionPrompts', 'updatedAt']);
+      allow delete: if true;
     }
 
     // 기존 다른 컬렉션 유지

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { addKeyVisual } from '../db';
+import { addFirestoreKeyVisual } from '../firebase/projectStore';
 import { CopyBlock, CopyBlockCode } from '../components/CopyBlock';
 
 /* ──── 디자인 뷰 ──── */
@@ -57,8 +57,12 @@ export default function KeyVisualPage() {
 
     async function handleAdd() {
         if (!newVisual.prompt.trim()) return;
-        await addKeyVisual(project.id, newVisual);
-        await reload();
+        try {
+            await addFirestoreKeyVisual(project.id, newVisual);
+            await reload();
+        } catch (err) {
+            console.error('[KeyVisualPage] 추가 실패:', err?.message);
+        }
         setNewVisual({ title: '', prompt: '', imageUrl: '', scene: '' });
         setShowAdd(false);
     }
