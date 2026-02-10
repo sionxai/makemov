@@ -15,6 +15,24 @@
 
 ---
 
+## ⚠️ 스킬 문서 (품질 기준 — 필독!)
+
+> **스키마(형식)만으로는 품질이 보장되지 않습니다.** 아래 스킬 문서를 반드시 참조하세요.
+> 각 단계의 밀도 공식, 품질 게이트, 체크리스트가 포함되어 있습니다.
+
+| 단계 | 스킬 문서 URL | 핵심 내용 |
+|------|---------------|-----------|
+| 시놉시스 | [`/skills/synopsis.md`](https://makemov.vercel.app/skills/synopsis.md) | ACT 구조, 밀도 기준, 인물 설계 |
+| 시나리오 | [`/skills/screenplay.md`](https://makemov.vercel.app/skills/screenplay.md) | 씬 배분, 타임코드 정합, 대사 밀도 |
+| 줄콘티 | [`/skills/storyboard.md`](https://makemov.vercel.app/skills/storyboard.md) | 컷 설계, 샷사이즈, 프롬프트 생성 규칙 |
+| 프롬프트 | [`/skills/cinematic_prompt.md`](https://makemov.vercel.app/skills/cinematic_prompt.md) | AI 실사 이미지 프롬프트 가이드 |
+| 키비주얼 | [`/skills/keyvisual.md`](https://makemov.vercel.app/skills/keyvisual.md) | 핵심 컷 이미지 자산 확정 |
+| 영상화 | [`/skills/videoproduction.md`](https://makemov.vercel.app/skills/videoproduction.md) | 플랫폼별 영상 생성 프롬프트 |
+
+📌 **인덱스:** [`/skills/index.md`](https://makemov.vercel.app/skills/index.md)
+
+
+
 ## 엔드포인트
 
 | Method | Endpoint | 설명 |
