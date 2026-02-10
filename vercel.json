@@ -5,7 +5,11 @@
             "destination": "/api/:path*"
         },
         {
-            "source": "/((?!api/|skills/|agent-guide\\.md).*)",
+            "source": "/agent-guide",
+            "destination": "/agent-guide.md"
+        },
+        {
+            "source": "/((?!api/|skills/|agent-guide).*)",
             "destination": "/index.html"
         }
     ],
@@ -24,7 +28,7 @@
             ]
         },
         {
-            "source": "/agent-guide.md",
+            "source": "/agent-guide{.md,}",
             "headers": [
                 {
                     "key": "Content-Type",

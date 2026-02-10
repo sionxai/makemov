@@ -7,7 +7,7 @@
 
 | 항목 | 값 |
 |------|-----|
-| BASE_URL | `https://makemov.vercel.app/api` |
+| BASE_URL | 이 문서를 읽은 도메인 + `/api` (예: `https://makemov-ioe7.vercel.app/api`) |
 | AUTH (읽기) | 불필요 (GET은 공개) |
 | AUTH (쓰기) | `x-api-key` 헤더 필수 (POST/PATCH/DELETE) |
 | Content-Type | `application/json` |
@@ -22,14 +22,14 @@
 
 | 단계 | 스킬 문서 URL | 핵심 내용 |
 |------|---------------|-----------|
-| 시놉시스 | [`/skills/synopsis.md`](https://makemov.vercel.app/skills/synopsis.md) | ACT 구조, 밀도 기준, 인물 설계 |
-| 시나리오 | [`/skills/screenplay.md`](https://makemov.vercel.app/skills/screenplay.md) | 씬 배분, 타임코드 정합, 대사 밀도 |
-| 줄콘티 | [`/skills/storyboard.md`](https://makemov.vercel.app/skills/storyboard.md) | 컷 설계, 샷사이즈, 프롬프트 생성 규칙 |
-| 프롬프트 | [`/skills/cinematic_prompt.md`](https://makemov.vercel.app/skills/cinematic_prompt.md) | AI 실사 이미지 프롬프트 가이드 |
-| 키비주얼 | [`/skills/keyvisual.md`](https://makemov.vercel.app/skills/keyvisual.md) | 핵심 컷 이미지 자산 확정 |
-| 영상화 | [`/skills/videoproduction.md`](https://makemov.vercel.app/skills/videoproduction.md) | 플랫폼별 영상 생성 프롬프트 |
+| 시놉시스 | [`/skills/synopsis.md`](./skills/synopsis.md) | ACT 구조, 밀도 기준, 인물 설계 |
+| 시나리오 | [`/skills/screenplay.md`](./skills/screenplay.md) | 씬 배분, 타임코드 정합, 대사 밀도 |
+| 줄콘티 | [`/skills/storyboard.md`](./skills/storyboard.md) | 컷 설계, 샷사이즈, 프롬프트 생성 규칙 |
+| 프롬프트 | [`/skills/cinematic_prompt.md`](./skills/cinematic_prompt.md) | AI 실사 이미지 프롬프트 가이드 |
+| 키비주얼 | [`/skills/keyvisual.md`](./skills/keyvisual.md) | 핵심 컷 이미지 자산 확정 |
+| 영상화 | [`/skills/videoproduction.md`](./skills/videoproduction.md) | 플랫폼별 영상 생성 프롬프트 |
 
-📌 **인덱스:** [`/skills/index.md`](https://makemov.vercel.app/skills/index.md)
+📌 **인덱스:** [`/skills/index.md`](./skills/index.md)
 
 
 
@@ -48,7 +48,7 @@
 ## STEP 1: 프로젝트 생성
 
 ```bash
-curl -X POST https://makemov.vercel.app/api/projects \
+curl -X POST https://makemov-ioe7.vercel.app/api/projects \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"title":"적벽대전 — 화공의 밤","description":"208년 제갈량과 주유의 화공 작전"}'
@@ -77,7 +77,7 @@ curl -X POST https://makemov.vercel.app/api/projects \
 ## STEP 2: 시놉시스 작성
 
 ```bash
-curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
+curl -X PATCH https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"synopsis": { ...시놉시스 스키마... }}'
@@ -159,7 +159,7 @@ curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
 ## STEP 3: 시나리오 작성
 
 ```bash
-curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
+curl -X PATCH https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"screenplay": [ ...씬 배열... ]}'
@@ -194,7 +194,7 @@ curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
 ## STEP 4: 줄콘티 작성
 
 ```bash
-curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
+curl -X PATCH https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"conti": { ...줄콘티 스키마... }}'
@@ -247,13 +247,13 @@ curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
 
 ```bash
 # 키비주얼 추가
-curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
+curl -X PATCH https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"keyvisuals": [{"id":"kv_1","title":"장면 제목","imageUrl":"...","prompt":"프롬프트","scene":"S1-C1"}]}'
 
 # 프로덕션 프롬프트 추가
-curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
+curl -X PATCH https://makemov-ioe7.vercel.app/api/projects/PROJECT_ID \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{"productionPrompts": [{"id":"pp_1","title":"제목","type":"video","prompt":"...","scene":"S1"}]}'
@@ -276,7 +276,7 @@ curl -X PATCH https://makemov.vercel.app/api/projects/PROJECT_ID \
 ## 완전한 워크플로 예시
 
 ```javascript
-const BASE = 'https://makemov.vercel.app/api';
+const BASE = 'https://makemov-ioe7.vercel.app/api';
 const KEY = 'YOUR_API_KEY';
 
 // 1. 프로젝트 생성
