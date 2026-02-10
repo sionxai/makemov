@@ -704,7 +704,7 @@ const JINJU2_PROJECT = {
 export async function seedJinju2Project() {
   const CURRENT_SYN_VER = 1;
   const CURRENT_SP_VER = 1;
-  const CURRENT_CONTI_VER = 1;
+  const CURRENT_CONTI_VER = 2; // v2: 인서트 보강 — 40컷→55컷
   const db = await getDB();
   const existing = await db.getAll(STORE_NAME);
   const found = existing.find(p => p.title === JINJU2_PROJECT.title);
