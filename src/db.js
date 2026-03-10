@@ -696,23 +696,32 @@ export async function seedRedcliffProject() {
 
 const JINJU2_PROJECT = {
   id: 'proj_jinju2_timeslip',
-  title: '2차 진주성전투 — 시간원정대 타임슬립',
-  description: '1593년 2차 진주성 전투, 시간원정대가 제주목사 이경록의 300 기병과 함께 진주성을 구해내는 타임슬립 액션. 약 180초.',
+  title: '진주성 1593 : 시간을 가르는 기병',
+  description: '1593년 2차 진주성 전투. 왕명을 어긴 제주목사 이경록의 300 기병과 2026년 시간원정대 12명이 역사를 다시 쓰는 시네마틱 다큐드라마. 약 90분.',
   status: 'progress',
 };
 
 export async function seedJinju2Project() {
-  const CURRENT_SYN_VER = 1;
-  const CURRENT_SP_VER = 1;
-  const CURRENT_CONTI_VER = 2; // v2: 인서트 보강 — 40컷→55컷
+  const CURRENT_SYN_VER = 2;  // v2: 다큐드라마 전면 개편
+  const CURRENT_SP_VER = 2;   // v2: 프롤로그+12장+에필로그+인터뷰12개
+  const CURRENT_CONTI_VER = 3; // v3: 무효화 (신 시나리오 대응 줄콘티 재작성 필요)
   const db = await getDB();
   const existing = await db.getAll(STORE_NAME);
-  const found = existing.find(p => p.title === JINJU2_PROJECT.title);
+  // id로 우선 탐색, 구 title 폴백 (title 변경 대응)
+  const found = existing.find(p => p.id === JINJU2_PROJECT.id)
+    || existing.find(p => p.title === '2차 진주성전투 — 시간원정대 타임슬립')
+    || existing.find(p => p.title === JINJU2_PROJECT.title);
 
   const now = new Date().toISOString();
 
   if (found) {
     let changed = false;
+    // title/description 갱신 (제목 변경 대응)
+    if (found.title !== JINJU2_PROJECT.title || found.description !== JINJU2_PROJECT.description) {
+      found.title = JINJU2_PROJECT.title;
+      found.description = JINJU2_PROJECT.description;
+      changed = true;
+    }
     if ((found._synVer || 0) < CURRENT_SYN_VER) {
       found.synopsis = { structured: JINJU2_SYNOPSIS, updatedAt: now };
       found._synVer = CURRENT_SYN_VER;
