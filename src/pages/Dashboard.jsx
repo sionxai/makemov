@@ -27,8 +27,28 @@ export default function Dashboard() {
     }, []);
 
     useEffect(() => {
-        loadProjects();
-    }, [loadProjects]);
+        let active = true;
+
+        getFirestoreProjects()
+            .then((data) => {
+                if (!active) return;
+                setProjects(data);
+            })
+            .catch((err) => {
+                if (!active) return;
+                console.error('[Dashboard] 프로젝트 로딩 실패:', err?.message);
+                setProjects([]);
+            })
+            .finally(() => {
+                if (active) {
+                    setLoading(false);
+                }
+            });
+
+        return () => {
+            active = false;
+        };
+    }, []);
 
     async function handleCreate(title, description) {
         const project = await createFirestoreProject(title, description);
@@ -46,6 +66,7 @@ export default function Dashboard() {
     function getCompletionCount(project) {
         let count = 0;
         if (project.synopsis?.content || project.synopsis?.structured) count++;
+        if (project.characterSheets?.length > 0) count++;
         if (project.screenplay?.scenes?.length > 0) count++;
         if (project.conti?.scenes?.length > 0) count++;
         if (project.storyboard?.frames?.length > 0) count++;
@@ -121,15 +142,16 @@ export default function Dashboard() {
                             <div className="project-meta">
                                 <span>{formatDate(project.updatedAt)}</span>
                                 <span>·</span>
-                                <span>진행 {getCompletionCount(project)}/6</span>
+                                <span>진행 {getCompletionCount(project)}/7</span>
                                 <div style={{ flex: 1 }} />
                                 <div style={{
                                     display: 'flex',
                                     gap: '2px',
                                 }}>
-                                    {['synopsis', 'screenplay', 'conti', 'storyboard', 'keyvisual', 'prompts'].map((step, i) => {
+                                    {['synopsis', 'characters', 'screenplay', 'conti', 'storyboard', 'keyvisual', 'prompts'].map((step, i) => {
                                         const filled = [
                                             project.synopsis?.content || project.synopsis?.structured,
+                                            project.characterSheets?.length > 0,
                                             project.screenplay?.scenes?.length > 0,
                                             project.conti?.scenes?.length > 0,
                                             project.storyboard?.frames?.length > 0,

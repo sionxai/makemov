@@ -46,6 +46,7 @@ export default function Sidebar() {
                     <>
                         <span className="sidebar-section-title">파이프라인</span>
                         <SidebarStep to={`${baseUrl}/synopsis`} icon="📄" label="시놉시스" />
+                        <SidebarStep to={`${baseUrl}/characters`} icon="👤" label="캐릭터 설정" />
                         <SidebarStep to={`${baseUrl}/screenplay`} icon="📝" label="시나리오" />
                         <SidebarStep to={`${baseUrl}/conti`} icon="📋" label="줄콘티" />
                         <SidebarStep to={`${baseUrl}/storyboard`} icon="🎬" label="스토리보드" />

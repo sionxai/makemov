@@ -7,9 +7,10 @@
 
 import {
     collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
-    orderBy, query, serverTimestamp,
+    orderBy, query,
 } from 'firebase/firestore';
 import { db as firestoreDb } from './client';
+import { buildDownstreamImpactPayload } from '../services/changeTracker';
 
 const COLLECTION = 'makemov_projects';
 
@@ -18,6 +19,54 @@ function colRef() {
 }
 function docRef(id) {
     return doc(firestoreDb, COLLECTION, id);
+}
+
+function createStageSectionDefaults(stage) {
+    switch (stage) {
+        case 'synopsis':
+            return {
+                status: 'draft',
+                structured: null,
+                content: '',
+                sourcePrompt: '',
+                options: null,
+                generation: null,
+                upstreamChanged: null,
+                updatedAt: null,
+            };
+        case 'screenplay':
+            return {
+                status: 'draft',
+                uid: '',
+                parent_uid: '',
+                rev: '',
+                scenes: [],
+                sourcePrompt: '',
+                options: null,
+                generation: null,
+                upstreamChanged: null,
+                updatedAt: null,
+            };
+        case 'conti':
+            return {
+                status: 'draft',
+                uid: '',
+                parent_uid: '',
+                rev: '',
+                title: '',
+                totalDuration: '',
+                promptContext: { era: '', culture: '', negatives: '' },
+                scenes: [],
+                assumptions: [],
+                sourcePrompt: '',
+                options: null,
+                generation: null,
+                upstreamChanged: null,
+                updatedAt: null,
+            };
+        default:
+            return {};
+    }
 }
 
 // ──── 읽기 ────
@@ -62,9 +111,9 @@ export async function createFirestoreProject(title, description = '') {
         status: 'draft',
         createdAt: now,
         updatedAt: now,
-        synopsis: { structured: null, updatedAt: null },
-        screenplay: { scenes: [], updatedAt: null },
-        conti: { scenes: [], updatedAt: null },
+        synopsis: createStageSectionDefaults('synopsis'),
+        screenplay: createStageSectionDefaults('screenplay'),
+        conti: createStageSectionDefaults('conti'),
         storyboard: { frames: [] },
         keyvisuals: [],
         productionPrompts: [],
@@ -89,25 +138,74 @@ export async function deleteFirestoreProject(id) {
 
 // ──── 섹션별 업데이트 헬퍼 ────
 
-export async function updateFirestoreSynopsis(id, data) {
+export async function updateFirestoreSynopsis(id, data, meta = {}) {
+    const project = await getFirestoreProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+
     const now = new Date().toISOString();
-    const synopsis = typeof data === 'string'
-        ? { content: data, updatedAt: now }
-        : { structured: data, updatedAt: now };
-    return updateFirestoreProject(id, { synopsis });
+    const previous = project.synopsis || createStageSectionDefaults('synopsis');
+    const structured = typeof data === 'string' ? previous.structured : data;
+    const status = structured?.status || 'draft';
+    const synopsis = {
+        ...previous,
+        status,
+        structured,
+        content: typeof data === 'string' ? data : (meta.content ?? previous.content ?? ''),
+        sourcePrompt: meta.sourcePrompt ?? previous.sourcePrompt ?? '',
+        options: meta.options ?? previous.options ?? null,
+        generation: meta.generation ? { ...previous.generation, ...meta.generation } : previous.generation,
+        upstreamChanged: null,
+        updatedAt: now,
+    };
+    const impacts = buildDownstreamImpactPayload(project, 'synopsis', now);
+    return updateFirestoreProject(id, { synopsis, ...impacts });
 }
 
-export async function updateFirestoreScreenplay(id, scenes) {
+export async function updateFirestoreScreenplay(id, scenesOrSection, meta = {}) {
+    const project = await getFirestoreProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+
     const now = new Date().toISOString();
+    const previous = project.screenplay || createStageSectionDefaults('screenplay');
+    const section = Array.isArray(scenesOrSection)
+        ? { ...previous, scenes: scenesOrSection }
+        : { ...previous, ...(scenesOrSection || {}) };
+
+    const screenplay = {
+        ...previous,
+        ...section,
+        status: section.status || 'draft',
+        sourcePrompt: meta.sourcePrompt ?? section.sourcePrompt ?? previous.sourcePrompt ?? '',
+        options: meta.options ?? section.options ?? previous.options ?? null,
+        generation: meta.generation ? { ...previous.generation, ...meta.generation } : (section.generation ?? previous.generation),
+        upstreamChanged: null,
+        updatedAt: now,
+    };
+    const impacts = buildDownstreamImpactPayload(project, 'screenplay', now);
     return updateFirestoreProject(id, {
-        screenplay: { scenes, updatedAt: now },
+        screenplay,
+        ...impacts,
     });
 }
 
-export async function updateFirestoreConti(id, contiData) {
+export async function updateFirestoreConti(id, contiData, meta = {}) {
+    const project = await getFirestoreProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+
     const now = new Date().toISOString();
+    const previous = project.conti || createStageSectionDefaults('conti');
+    const conti = {
+        ...previous,
+        ...(contiData || {}),
+        status: contiData?.status || 'draft',
+        sourcePrompt: meta.sourcePrompt ?? contiData?.sourcePrompt ?? previous.sourcePrompt ?? '',
+        options: meta.options ?? contiData?.options ?? previous.options ?? null,
+        generation: meta.generation ? { ...previous.generation, ...meta.generation } : (contiData?.generation ?? previous.generation),
+        upstreamChanged: null,
+        updatedAt: now,
+    };
     return updateFirestoreProject(id, {
-        conti: { ...contiData, updatedAt: now },
+        conti,
     });
 }
 

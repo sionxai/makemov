@@ -27,8 +27,30 @@ export default function ProjectLayout() {
     }, [id, navigate]);
 
     useEffect(() => {
-        loadProject();
-    }, [loadProject]);
+        let active = true;
+
+        getFirestoreProject(id)
+            .then((data) => {
+                if (!active) return;
+                if (!data) {
+                    setLoading(false);
+                    navigate('/');
+                    return;
+                }
+                setProject(data);
+                setLoading(false);
+            })
+            .catch((err) => {
+                if (!active) return;
+                console.error('[ProjectLayout] 프로젝트 로딩 실패:', err?.message);
+                setLoading(false);
+                navigate('/');
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [id, navigate]);
 
     async function handleProjectUpdate(updates) {
         try {

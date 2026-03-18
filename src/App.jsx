@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import ProjectLayout from './pages/ProjectLayout';
 import SynopsisPage from './pages/SynopsisPage';
+import CharacterPage from './pages/CharacterPage';
 import ScreenplayPage from './pages/ScreenplayPage';
 import ContiPage from './pages/ContiPage';
 import StoryboardPage from './pages/StoryboardPage';
@@ -32,6 +33,7 @@ export default function App() {
             />
             <Route path="/project/:id" element={<ProjectLayout />}>
               <Route path="synopsis" element={<SynopsisPage />} />
+              <Route path="characters" element={<CharacterPage />} />
               <Route path="screenplay" element={<ScreenplayPage />} />
               <Route path="conti" element={<ContiPage />} />
               <Route path="storyboard" element={<StoryboardPage />} />
