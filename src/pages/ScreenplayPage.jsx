@@ -191,6 +191,12 @@ function EditView({ scenes, setScenes, onSave, saving }) {
 export default function ScreenplayPage() {
     const { project, reload } = useOutletContext();
     const synopsisData = project?.synopsis?.structured || null;
+    const characterSheets = useMemo(() => project?.characterSheets || [], [project?.characterSheets]);
+    const screenplayInputData = useMemo(() => ({
+        uid: synopsisData?.uid || '',
+        synopsis: synopsisData,
+        characterSheets,
+    }), [synopsisData, characterSheets]);
     const normalizedSection = useMemo(() => (
         normalizeGeneratedStageData('screenplay', project?.screenplay || { scenes: [] }, {
             previousData: project?.screenplay,
@@ -209,6 +215,7 @@ export default function ScreenplayPage() {
     const synopsisStatus = getStageStatus(project, 'synopsis');
     const impact = getStageImpact(project, 'screenplay');
     const canUseSynopsis = isApprovedStatus(synopsisStatus);
+    const hasCharacterSheets = characterSheets.length > 0;
 
     async function handleSave(section, meta = {}) {
         setSaving(true);
@@ -294,11 +301,13 @@ export default function ScreenplayPage() {
                 <AiGeneratePanel
                     stage="screenplay"
                     projectTitle={project.title}
-                    inputData={synopsisData}
+                    inputData={screenplayInputData}
                     currentData={normalizedSection}
                     prerequisite={{
-                        satisfied: canUseSynopsis,
-                        message: '시놉시스가 아직 승인되지 않았습니다. 그래도 강제로 시나리오 생성을 진행할 수 있습니다.',
+                        satisfied: canUseSynopsis && hasCharacterSheets,
+                        message: hasCharacterSheets
+                            ? '시놉시스가 아직 승인되지 않았습니다. 그래도 강제로 시나리오 생성을 진행할 수 있습니다.'
+                            : '캐릭터 시트가 아직 없습니다. 시놉시스 승인 후 캐릭터 시트를 만든 다음 시나리오로 진행하는 흐름을 권장합니다.',
                     }}
                     onGenerated={(generated) => setScenes(generated.scenes || [])}
                     onSave={handleSave}

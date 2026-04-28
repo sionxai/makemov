@@ -333,6 +333,13 @@ function EditView({ conti, setConti, onSave, saving }) {
 export default function ContiPage() {
     const { project, reload } = useOutletContext();
     const screenplayData = useMemo(() => project?.screenplay || { scenes: [] }, [project?.screenplay]);
+    const characterSheets = useMemo(() => project?.characterSheets || [], [project?.characterSheets]);
+    const contiInputData = useMemo(() => ({
+        uid: screenplayData?.uid || '',
+        screenplay: screenplayData,
+        synopsis: project?.synopsis?.structured || null,
+        characterSheets,
+    }), [screenplayData, project?.synopsis?.structured, characterSheets]);
     const normalizedConti = useMemo(() => (
         normalizeGeneratedStageData('conti', project?.conti || { scenes: [], assumptions: [] }, {
             previousData: project?.conti,
@@ -351,6 +358,7 @@ export default function ContiPage() {
     const screenplayStatus = getStageStatus(project, 'screenplay');
     const impact = getStageImpact(project, 'conti');
     const canUseScreenplay = isApprovedStatus(screenplayStatus);
+    const hasCharacterSheets = characterSheets.length > 0;
 
     async function handleSave(nextConti, meta = {}) {
         setSaving(true);
@@ -432,11 +440,13 @@ export default function ContiPage() {
                 <AiGeneratePanel
                     stage="conti"
                     projectTitle={project.title}
-                    inputData={screenplayData}
+                    inputData={contiInputData}
                     currentData={normalizedConti}
                     prerequisite={{
-                        satisfied: canUseScreenplay,
-                        message: '시나리오가 아직 승인되지 않았습니다. 그래도 강제로 줄콘티 생성을 진행할 수 있습니다.',
+                        satisfied: canUseScreenplay && hasCharacterSheets,
+                        message: hasCharacterSheets
+                            ? '시나리오가 아직 승인되지 않았습니다. 그래도 강제로 줄콘티 생성을 진행할 수 있습니다.'
+                            : '캐릭터 시트가 아직 없습니다. 캐릭터 시트 생성 후 줄콘티로 진행해야 컷별 외형 연속성이 좋아집니다.',
                     }}
                     onGenerated={(generated) => setConti(generated)}
                     onSave={handleSave}

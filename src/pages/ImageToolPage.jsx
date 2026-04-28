@@ -6,10 +6,11 @@ import {
   updateCharacterSheet,
   uploadCharacterSheet,
 } from '../firebase/characterSheetStore';
-import { ACTION_STEPS, ASPECT_RATIOS, CINEMATIC_ANGLES } from '../imageTool/constants';
+import { ACTION_STEPS, ASPECT_RATIOS, CINEMATIC_ANGLES, LOCATION_ANGLES } from '../imageTool/constants';
 import {
   applyToneAndManner,
   fileToBase64,
+  generateImageFromText,
   generateImageWithMultipleReferences,
   generateImageWithReference,
 } from '../imageTool/geminiService';
@@ -32,6 +33,7 @@ const TOOL_TABS = [
   { id: 'sheet', label: '양식 포맷 동일 생성', icon: '👤' },
   { id: 'action', label: '액션 시퀀스 생성', icon: '🔥' },
   { id: 'tone', label: '톤앤매너 다중 수정', icon: '🎨' },
+  { id: 'location', label: '로케이션 생성', icon: '🏛️' },
 ];
 
 const GEMINI_KEY_STORAGE = 'makemov_gemini_api_key';
@@ -2009,6 +2011,542 @@ function ToneMannerTool({
   );
 }
 
+function buildLocationPrompt({ angleName, angleDescription, locationPrompt, additionalPrompt, ratio }) {
+  const locationText = String(locationPrompt || '').trim() || 'A cinematic film location';
+  const requirementText = String(additionalPrompt || '').trim() || 'No extra style requirement';
+  return `Generate a photorealistic cinematic location image. Location description: ${locationText}. Camera angle: ${angleName}. ${angleDescription}. Additional requirements: ${requirementText}. The image must be a single coherent photorealistic environment/architecture frame — no people unless the angle specifically requires scale reference, no collage, no split-screen. Maintain strict environmental consistency across all generated angles. Ratio: ${ratio}.`;
+}
+
+function LocationTool({
+  apiKey,
+  disabled,
+  selectedCharacterSheets,
+  incomingKeyImage,
+  onSendToKeyImage,
+}) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState('');
+  const [externalKeyImage, setExternalKeyImage] = useState(null);
+  const [ratio, setRatio] = useState('16:9');
+  const [locationPrompt, setLocationPrompt] = useState('');
+  const [additionalPrompt, setAdditionalPrompt] = useState('');
+  const [promptOverrides, setPromptOverrides] = useState({});
+  const [selectedAngles, setSelectedAngles] = useState(() => LOCATION_ANGLES.map((_, i) => i));
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [refinePrompt, setRefinePrompt] = useState('');
+  const [running, setRunning] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [workerCount, setWorkerCount] = useState(4);
+  const [stopRequested, setStopRequested] = useState(false);
+  const [error, setError] = useState('');
+  const [restored, setRestored] = useState(false);
+  const stopRef = useRef(false);
+  const selectedId = selected?.id || null;
+  const hasReference = Boolean(file || externalKeyImage);
+
+  const anglePromptRows = useMemo(
+    () => LOCATION_ANGLES.map((angle, index) => {
+      const defaultPrompt = buildLocationPrompt({
+        angleName: angle.name,
+        angleDescription: angle.description,
+        locationPrompt,
+        additionalPrompt,
+        ratio,
+      });
+      const override = typeof promptOverrides[index] === 'string' ? promptOverrides[index] : '';
+      const finalPrompt = override.trim() ? override : defaultPrompt;
+      return {
+        index,
+        angle,
+        defaultPrompt,
+        override,
+        finalPrompt,
+        isCustom: Boolean(override.trim()),
+      };
+    }),
+    [locationPrompt, additionalPrompt, promptOverrides, ratio],
+  );
+
+  function setPromptOverride(index, value) {
+    setPromptOverrides((prev) => {
+      const next = { ...prev };
+      if (!String(value || '').trim()) {
+        delete next[index];
+      } else {
+        next[index] = value;
+      }
+      return next;
+    });
+  }
+
+  function toggleAngle(index) {
+    setSelectedAngles((prev) =>
+      prev.includes(index)
+        ? prev.filter((i) => i !== index)
+        : [...prev, index].sort((a, b) => a - b),
+    );
+  }
+
+  function selectAllAngles() {
+    setSelectedAngles(LOCATION_ANGLES.map((_, i) => i));
+  }
+
+  function deselectAllAngles() {
+    setSelectedAngles([]);
+  }
+
+  useEffect(() => {
+    let active = true;
+    async function restoreSnapshot() {
+      try {
+        const snapshot = await loadImageToolSnapshot('location');
+        if (!active || !snapshot) return;
+        const restoredResults = Array.isArray(snapshot.results) ? snapshot.results : [];
+        setResults(restoredResults);
+        if (typeof snapshot.ratio === 'string' && snapshot.ratio) setRatio(snapshot.ratio);
+        if (typeof snapshot.locationPrompt === 'string') setLocationPrompt(snapshot.locationPrompt);
+        if (typeof snapshot.additionalPrompt === 'string') setAdditionalPrompt(snapshot.additionalPrompt);
+        if (snapshot.promptOverrides && typeof snapshot.promptOverrides === 'object') {
+          setPromptOverrides(snapshot.promptOverrides);
+        }
+        if (Array.isArray(snapshot.selectedAngles)) {
+          setSelectedAngles(snapshot.selectedAngles);
+        }
+        if (typeof snapshot.workerCount === 'number') {
+          setWorkerCount(clampWorkerCount(snapshot.workerCount));
+        }
+        if (snapshot.selectedId) {
+          const matched = restoredResults.find((item) => item.id === snapshot.selectedId);
+          if (matched) setSelected(matched);
+        }
+      } catch (snapshotErr) {
+        console.error(snapshotErr);
+      } finally {
+        if (active) setRestored(true);
+      }
+    }
+    void restoreSnapshot();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return;
+    void saveImageToolSnapshot('location', {
+      ratio,
+      locationPrompt,
+      additionalPrompt,
+      selectedId,
+      promptOverrides,
+      selectedAngles,
+      workerCount,
+      results,
+    });
+  }, [additionalPrompt, locationPrompt, promptOverrides, ratio, restored, results, selectedAngles, selectedId, workerCount]);
+
+  useEffect(() => {
+    if (!incomingKeyImage?.token || !incomingKeyImage?.url) return;
+    setFile(null);
+    setExternalKeyImage(incomingKeyImage);
+    setPreview(incomingKeyImage.url);
+  }, [incomingKeyImage]);
+
+  async function handleGenerate() {
+    if (selectedAngles.length === 0 || disabled || running) return;
+    if (!hasReference && !locationPrompt.trim()) return;
+    setRunning(true);
+    setStopRequested(false);
+    stopRef.current = false;
+    setError('');
+    setResults([]);
+    setProgress(0);
+    try {
+      let primaryInline = null;
+      if (hasReference) {
+        primaryInline = await resolvePrimaryInputImage({ file, externalImage: externalKeyImage });
+      }
+      const characterRefs = await buildCharacterSheetInlineReferences(selectedCharacterSheets);
+      const anglesToGenerate = selectedAngles.map((i) => ({
+        index: i,
+        angle: LOCATION_ANGLES[i],
+        promptRow: anglePromptRows[i],
+      }));
+
+      const status = await runConcurrentTasks({
+        items: anglesToGenerate,
+        workerCount,
+        shouldStop: () => stopRef.current,
+        runTask: async (item) => {
+          const { index: i, angle, promptRow } = item;
+          const prompt = promptRow?.finalPrompt
+            || buildLocationPrompt({
+              angleName: angle.name,
+              angleDescription: angle.description,
+              locationPrompt,
+              additionalPrompt,
+              ratio,
+            });
+          const promptWithRefs = withCharacterSheetDirective(prompt, selectedCharacterSheets);
+          try {
+            let url = '';
+            if (primaryInline) {
+              if (characterRefs.length === 0) {
+                url = await generateImageWithReference({
+                  apiKey,
+                  prompt: promptWithRefs,
+                  referenceBase64: primaryInline.data,
+                  mimeType: primaryInline.mimeType || 'image/png',
+                  aspectRatio: ratio,
+                });
+              } else {
+                url = await generateImageWithMultipleReferences({
+                  apiKey,
+                  prompt: promptWithRefs,
+                  images: [
+                    { data: primaryInline.data, mimeType: primaryInline.mimeType || 'image/png' },
+                    ...characterRefs,
+                  ],
+                  aspectRatio: ratio,
+                });
+              }
+            } else {
+              url = await generateImageFromText({
+                apiKey,
+                prompt: promptWithRefs,
+                aspectRatio: ratio,
+              });
+            }
+            setResults((prev) => [...prev, createResultItem({ id: `loc-${i}-${Date.now()}`, label: angle.name, url, prompt: promptWithRefs })]);
+          } catch (angleErr) {
+            console.error(angleErr);
+          }
+        },
+        onDone: (done, total) => {
+          setProgress(Math.round((done / total) * 100));
+        },
+        onTaskError: (taskErr) => {
+          console.error(taskErr);
+        },
+      });
+      if (status.stopped) {
+        setError('정지 요청으로 새 요청 발행을 중단했습니다. 이미 시작된 요청은 완료될 수 있습니다.');
+      }
+    } catch (err) {
+      setError(err?.message || '로케이션 이미지 생성 중 오류가 발생했습니다.');
+    } finally {
+      stopRef.current = false;
+      setStopRequested(false);
+      setRunning(false);
+    }
+  }
+
+  async function handleRefine() {
+    if (!selected || !refinePrompt.trim() || refining || disabled) return;
+    setRefining(true);
+    setError('');
+    try {
+      const selectedInline = await sourceToInlineImage(selected.url, 'image/png');
+      const characterRefs = await buildCharacterSheetInlineReferences(selectedCharacterSheets);
+      const prompt = withCharacterSheetDirective(
+        `Refine this location image. Keep the environment identity, architecture, and overall composition; apply this change: ${refinePrompt}. Output ratio: ${ratio}.`,
+        selectedCharacterSheets,
+      );
+      let url = '';
+      if (characterRefs.length === 0) {
+        url = await generateImageWithReference({
+          apiKey,
+          prompt,
+          referenceBase64: selectedInline.data,
+          mimeType: selectedInline.mimeType || 'image/png',
+          aspectRatio: ratio,
+        });
+      } else {
+        url = await generateImageWithMultipleReferences({
+          apiKey,
+          prompt,
+          images: [
+            { data: selectedInline.data, mimeType: selectedInline.mimeType || 'image/png' },
+            ...characterRefs,
+          ],
+          aspectRatio: ratio,
+        });
+      }
+      const updatedAt = new Date().toISOString();
+      setResults((prev) => prev.map((item) => (item.id === selected.id ? { ...item, url, updatedAt } : item)));
+      setSelected((prev) => (prev ? { ...prev, url, updatedAt } : prev));
+      setRefinePrompt('');
+    } catch (err) {
+      setError(err?.message || '수정 생성 실패');
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  async function handleClearHistory() {
+    setResults([]);
+    setSelected(null);
+    setRefinePrompt('');
+    setError('');
+    setProgress(0);
+    await clearImageToolSnapshot('location');
+  }
+
+  function handleStop() {
+    if (!running) return;
+    stopRef.current = true;
+    setStopRequested(true);
+  }
+
+  function handleTogglePinSelected() {
+    if (!selected) return;
+    const nextResults = togglePinned(results, selected.id);
+    setResults(nextResults);
+    const nextSelected = nextResults.find((item) => item.id === selected.id) || null;
+    setSelected(nextSelected);
+  }
+
+  const canGenerate = selectedAngles.length > 0 && (hasReference || locationPrompt.trim()) && !disabled && !running;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 'var(--space-md)' }}>
+      <div className="card" style={{ padding: 'var(--space-md)' }}>
+        <h3 style={{ marginBottom: 'var(--space-sm)' }}>🏛️ 로케이션 입력</h3>
+        <div className="text-muted" style={{ fontSize: '0.78rem', marginBottom: 'var(--space-sm)' }}>
+          참조 이미지 또는 텍스트 프롬프트(또는 둘 다)를 입력하면 다양한 화각의 로케이션 이미지를 생성합니다.
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">참조 이미지 (선택)</label>
+          <input
+            type="file"
+            accept="image/*"
+            className="form-input"
+            onChange={(e) => {
+              const picked = e.target.files?.[0] || null;
+              setFile(picked);
+              setExternalKeyImage(null);
+              setPreview(picked ? URL.createObjectURL(picked) : '');
+            }}
+          />
+          <div className="text-muted" style={{ fontSize: '0.72rem', marginTop: '4px' }}>
+            비워두면 텍스트 프롬프트만으로 생성합니다.
+          </div>
+        </div>
+        {externalKeyImage && (
+          <div className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '6px' }}>
+            공용 키 이미지 적용됨: {externalKeyImage.label || '선택 이미지'}
+          </div>
+        )}
+        {preview && (
+          <img
+            src={preview}
+            alt="location-ref"
+            style={{ width: '100%', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-sm)' }}
+          />
+        )}
+
+        <div className="form-group">
+          <label className="form-label">로케이션 설명 프롬프트 {!hasReference && <span style={{ color: 'var(--accent-danger)' }}>*필수</span>}</label>
+          <textarea
+            className="form-textarea"
+            rows={4}
+            value={locationPrompt}
+            onChange={(e) => setLocationPrompt(e.target.value)}
+            placeholder="예: 조선시대 성곽 마을, 돌담길과 기와 지붕, 산속에 위치한 고즈넉한 마을"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">추가 스타일 프롬프트</label>
+          <textarea
+            className="form-textarea"
+            rows={3}
+            value={additionalPrompt}
+            onChange={(e) => setAdditionalPrompt(e.target.value)}
+            placeholder="예: 극사실주의, cinematic lighting, 35mm film grain"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">화면 비율</label>
+          <RatioButtons value={ratio} onChange={setRatio} />
+        </div>
+        <WorkerCountControl value={workerCount} onChange={setWorkerCount} disabled={running} />
+
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <label className="form-label" style={{ marginBottom: 0 }}>생성할 화각 ({selectedAngles.length}/{LOCATION_ANGLES.length})</label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={selectAllAngles} style={{ fontSize: '0.72rem' }}>전체</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={deselectAllAngles} style={{ fontSize: '0.72rem' }}>해제</button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: '4px', maxHeight: '200px', overflow: 'auto', paddingRight: '2px' }}>
+            {LOCATION_ANGLES.map((angle, i) => (
+              <label
+                key={i}
+                style={{
+                  display: 'flex',
+                  gap: '6px',
+                  alignItems: 'center',
+                  padding: '4px 6px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: selectedAngles.includes(i) ? 'var(--bg-secondary)' : 'transparent',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedAngles.includes(i)}
+                  onChange={() => toggleAngle(i)}
+                  style={{ marginRight: '2px' }}
+                />
+                {angle.name}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <details style={{ marginBottom: 'var(--space-sm)' }}>
+          <summary style={{ cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+            생성 명령 프롬프트 보기/수정 ({LOCATION_ANGLES.length}개)
+          </summary>
+          <div style={{ marginTop: '8px', display: 'grid', gap: '8px', maxHeight: '320px', overflow: 'auto', paddingRight: '2px' }}>
+            <div className="text-muted" style={{ fontSize: '0.74rem' }}>
+              각 화각별 실제 생성 프롬프트입니다. 내용을 바꾸면 해당 화각 생성에 바로 반영됩니다.
+            </div>
+            <div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setPromptOverrides({})}
+                disabled={Object.keys(promptOverrides).length === 0}
+              >
+                전체 기본값 복원
+              </button>
+            </div>
+            {anglePromptRows.map((row) => (
+              <details key={row.index} style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '6px 8px' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '0.78rem' }}>
+                  {row.index + 1}. {row.angle.name}{row.isCustom ? ' (커스텀 적용)' : ''}
+                </summary>
+                <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
+                  <textarea
+                    className="form-textarea"
+                    rows={5}
+                    value={row.finalPrompt}
+                    onChange={(e) => setPromptOverride(row.index, e.target.value)}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="text-muted" style={{ fontSize: '0.72rem' }}>
+                      비우면 기본 프롬프트로 자동 복귀
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={!row.isCustom}
+                      onClick={() => setPromptOverride(row.index, '')}
+                    >
+                      기본값 복원
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={!canGenerate}>
+            {running ? `생성 중... ${progress}%` : `${selectedAngles.length}개 화각 로케이션 생성`}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={handleStop} disabled={!running}>
+            정지
+          </button>
+        </div>
+        {running && stopRequested && (
+          <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: '6px' }}>
+            정지 요청됨: 현재 처리 중인 워커 완료 후 중단합니다.
+          </div>
+        )}
+        {!!error && <div style={{ color: 'var(--accent-danger)', fontSize: '0.82rem', marginTop: '8px' }}>{error}</div>}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+        <div className="card" style={{ padding: 'var(--space-md)' }}>
+          <div className="flex-between" style={{ marginBottom: 'var(--space-sm)' }}>
+            <h3>결과</h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {results.length > 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={() => results.forEach((r, i) => downloadImage(r.url, `location-${i + 1}.png`))}>
+                  전체 다운로드
+                </button>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={() => void handleClearHistory()} disabled={results.length === 0}>
+                기록 비우기
+              </button>
+            </div>
+          </div>
+          <ResultsGrid items={results} onSelect={setSelected} emptyText="로케이션 설명을 입력하거나 참조 이미지를 올리고 생성하세요." />
+        </div>
+
+        {selected && (
+          <div className="card" style={{ padding: 'var(--space-md)' }}>
+            <h3 style={{ marginBottom: 'var(--space-sm)' }}>
+              선택 이미지 수정: {selected.pinned ? '📌 ' : ''}{selected.label}
+            </h3>
+            <img
+              src={selected.url}
+              alt={selected.label}
+              style={{ width: '100%', maxHeight: '280px', objectFit: 'contain', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-sm)' }}
+            />
+            {selected.prompt && (
+              <details style={{ marginBottom: 'var(--space-sm)' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                  이 이미지 생성 프롬프트 보기
+                </summary>
+                <textarea
+                  className="form-textarea"
+                  rows={5}
+                  readOnly
+                  value={selected.prompt}
+                  style={{ marginTop: '6px' }}
+                />
+              </details>
+            )}
+            <textarea
+              className="form-textarea"
+              rows={3}
+              value={refinePrompt}
+              onChange={(e) => setRefinePrompt(e.target.value)}
+              placeholder="예: 시간대를 새벽으로 변경, 안개를 더 짙게, 도로에 빗물 반사 추가"
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => onSendToKeyImage?.(selected)}>
+                키 이미지로 보내기
+              </button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={handleTogglePinSelected}>
+                {selected.pinned ? '고정 해제' : '보관 고정'}
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={handleRefine} disabled={!refinePrompt.trim() || refining || disabled}>
+                {refining ? '수정 생성 중...' : '현재 이미지 기반 수정'}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => downloadImage(selected.url, `${selected.label}.png`)}>
+                다운로드
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function ImageToolPage() {
   const envApiKey = useMemo(() => import.meta.env.VITE_GEMINI_API_KEY || '', []);
   const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem(GEMINI_KEY_STORAGE) || envApiKey);
@@ -2492,7 +3030,7 @@ export default function ImageToolPage() {
           <div>
             <div className="form-label" style={{ marginBottom: '4px' }}>공용 키 이미지</div>
             <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-              각 툴 결과에서 `키 이미지로 보내기`를 누르면 4개 툴 입력에 공통으로 반영됩니다.
+              각 툴 결과에서 `키 이미지로 보내기`를 누르면 5개 툴 입력에 공통으로 반영됩니다.
             </div>
           </div>
           <button className="btn btn-ghost btn-sm" type="button" onClick={clearSharedKeyImage} disabled={!sharedKeyImage}>
@@ -2554,6 +3092,15 @@ export default function ImageToolPage() {
       </div>
       <div style={{ display: mode === 'tone' ? 'block' : 'none' }}>
         <ToneMannerTool
+          apiKey={apiKey}
+          disabled={!hasApiKey}
+          selectedCharacterSheets={selectedCharacterSheets}
+          incomingKeyImage={sharedKeyImage}
+          onSendToKeyImage={handleSendToKeyImage}
+        />
+      </div>
+      <div style={{ display: mode === 'location' ? 'block' : 'none' }}>
+        <LocationTool
           apiKey={apiKey}
           disabled={!hasApiKey}
           selectedCharacterSheets={selectedCharacterSheets}

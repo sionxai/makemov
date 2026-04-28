@@ -18,6 +18,21 @@ export const CINEMATIC_ANGLES = [
   { name: '인서트 샷', description: '물건/손동작/단서 등 정보 전달용 디테일 컷' },
 ];
 
+export const LOCATION_ANGLES = [
+  { name: '설정 샷 (Establishing Shot)', description: 'Wide establishing shot that shows the entire location in context. Capture the full scope of the environment, surrounding geography, and architectural scale. This is the master reference shot.' },
+  { name: '항공 버드아이뷰', description: 'Aerial top-down bird\'s eye view of the location. Show the layout, spatial relationships, roads, and surrounding terrain from directly above at high altitude.' },
+  { name: '드론 45° 오버뷰', description: 'Drone perspective at 45-degree angle, showing the location from an elevated diagonal viewpoint. Reveal both the ground plan and vertical structure simultaneously.' },
+  { name: '정면 파사드', description: 'Straight-on frontal view of the main facade or entrance. Capture architectural details, signage, and the primary visual impression a visitor would see upon approach.' },
+  { name: '내부 와이드', description: 'Wide interior shot showing the full internal space. Capture ceiling height, floor plan, lighting conditions, furniture/props placement, and overall atmosphere of the indoor environment.' },
+  { name: '내부 디테일', description: 'Close-up interior detail shot focusing on textures, materials, decorative elements, or distinctive features. Show wall surfaces, flooring patterns, fixtures, and tactile qualities of the space.' },
+  { name: '측면 프로필', description: 'Side profile view of the location showing depth and layered structures. Capture the building or environment from a 90-degree lateral angle to reveal proportion and side details.' },
+  { name: '후면/이면', description: 'Rear or backside view of the location. Show service areas, back entrances, hidden courtyards, or the less curated side that reveals practical functionality.' },
+  { name: '골든아워 석양', description: 'Golden hour sunset lighting on the location. Warm amber tones, long shadows, dramatic sky gradient. Capture how the location transforms under golden hour cinematographic lighting.' },
+  { name: '야간 / 블루아워', description: 'Night or blue hour view of the location. Show artificial lighting, neon signs, moonlight, street lamps, and the moody atmospheric quality of the space after dark.' },
+  { name: '날씨 변형 (우천/안개)', description: 'The location under dramatic weather conditions — rain, fog, mist, or overcast skies. Wet reflections on surfaces, atmospheric haze, and moody diffused lighting.' },
+  { name: '인물 스케일 참조', description: 'The location with a human figure for scale reference. Place a single person naturally within the environment to demonstrate the proportional relationship between human and space.' },
+];
+
 export const ACTION_STEPS = [
   '준비 동작',
   '도약',

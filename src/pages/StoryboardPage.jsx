@@ -2,6 +2,47 @@ import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { updateFirestoreStoryboard } from '../firebase/projectStore';
 import { CopyBlockCode } from '../components/CopyBlock';
+import { generateVisualImage, normalizeImageSize, uploadProjectImage } from '../services/visualPipelineService';
+
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+const DEFAULT_SKETCH_IMAGE_SIZE = normalizeImageSize(import.meta.env.VITE_GEMINI_IMAGE_SIZE || '1K');
+
+function buildStoryboardSketchPrompt(project, scene, cut) {
+    const synopsis = project?.synopsis?.structured || {};
+    const info = synopsis.info || {};
+    const visualTone = synopsis.visualTone || {};
+    const promptContext = project?.conti?.promptContext || {};
+
+    return `Create a single cinematic storyboard sketch frame for a film previsualization board.
+
+Project: ${project?.title || 'Untitled'}
+Genre: ${info.genre || 'cinematic drama'}
+Runtime format: ${info.runtime || ''}
+Tone and mood: ${info.tone || ''}
+Visual palette: ${visualTone.palette || ''}
+Lighting: ${visualTone.lighting || ''}
+Camera language: ${visualTone.camera || ''}
+Era/context: ${promptContext.era || ''}
+Culture/context: ${promptContext.culture || ''}
+
+Scene: ${scene.scene_id} — ${scene.heading}
+Cut: ${cut.cut_id}
+Timecode: ${cut.tc_start || ''} - ${cut.tc_end || ''}
+Shot: ${cut.shot || ''}
+Angle: ${cut.angle || ''}
+Camera move: ${cut.camera_move || ''}
+Visual action: ${cut.visual || ''}
+Dialogue cue: ${cut.dialogue || ''}
+Base image prompt: ${cut.sketch_prompt || ''}
+
+Style requirements:
+- 16:9 single frame, not a collage
+- grayscale cinematic storyboard sketch, ink and pencil previsualization
+- clear subject blocking, readable composition, production storyboard quality
+- preserve the camera angle and shot size exactly
+- no subtitles, no UI text, no watermark
+Negative constraints: ${promptContext.negatives || 'no text, no logo, no watermark, no extra limbs'}`;
+}
 
 /* ──── 스케치 이미지 (로딩 실패 시 플레이스홀더 폴백) ──── */
 function SketchImage({ sketch, cut }) {
@@ -28,7 +69,7 @@ function SketchImage({ sketch, cut }) {
 }
 
 /* ──── 디자인 뷰: 줄콘티 기반 스토리보드 ──── */
-function DesignView({ contiScenes, storyboardMap }) {
+function DesignView({ contiScenes, storyboardMap, onGenerateSketch, sketchLoadingCutId }) {
     if (!contiScenes?.length) {
         return (
             <div className="empty-state">
@@ -40,7 +81,7 @@ function DesignView({ contiScenes, storyboardMap }) {
     }
 
     const totalCuts = contiScenes.reduce((s, sc) => s + sc.cuts.length, 0);
-    const drawnCuts = Object.keys(storyboardMap).length;
+    const drawnCuts = Object.values(storyboardMap).filter((item) => item?.imageUrl).length;
 
     return (
         <div className="sb2-design">
@@ -112,6 +153,22 @@ function DesignView({ contiScenes, storyboardMap }) {
                                 <div className="sb2-sketch-wrap">
                                     <div className="sb2-sketch">
                                         <SketchImage sketch={sketch} cut={cut} />
+                                        {onGenerateSketch && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-primary btn-sm"
+                                                onClick={() => onGenerateSketch(scene, cut)}
+                                                disabled={!!sketchLoadingCutId}
+                                                style={{
+                                                    position: 'absolute',
+                                                    right: '8px',
+                                                    bottom: '8px',
+                                                    boxShadow: '0 10px 24px rgba(0,0,0,0.25)',
+                                                }}
+                                            >
+                                                {sketchLoadingCutId === cut.cut_id ? '생성 중...' : sketch?.imageUrl ? '재생성' : '스케치 생성'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -194,11 +251,9 @@ function buildDefaultSketchMap(contiScenes) {
     if (!contiScenes?.length) return map;
     contiScenes.forEach(scene => {
         scene.cuts.forEach(cut => {
-            // cut_id "S1-C1" → "sb_s1c1.png"
-            const fileName = `sb_${cut.cut_id.toLowerCase().replace('-', '')}.png`;
             map[cut.cut_id] = {
                 cut_id: cut.cut_id,
-                imageUrl: `/img/jinju/${fileName}`,
+                prompt: cut.sketch_prompt || '',
             };
         });
     });
@@ -210,6 +265,10 @@ export default function StoryboardPage() {
     const { project, reload } = useOutletContext();
     const [view, setView] = useState('design');
     const [saving, setSaving] = useState(false);
+    const [sketchLoadingCutId, setSketchLoadingCutId] = useState('');
+    const [sketchStatus, setSketchStatus] = useState('');
+    const [sketchError, setSketchError] = useState('');
+    const [imageSize, setImageSize] = useState(DEFAULT_SKETCH_IMAGE_SIZE);
 
     // 줄콘티 데이터에서 씬/컷 구조를 읽어온다
     const contiScenes = project?.conti?.scenes || [];
@@ -234,12 +293,112 @@ export default function StoryboardPage() {
         return map;
     });
 
+    const missingSketchCuts = contiScenes.flatMap((scene) => (
+        (scene.cuts || [])
+            .filter((cut) => !storyboardMap[cut.cut_id]?.imageUrl)
+            .map((cut) => ({ scene, cut }))
+    ));
+
+    async function persistStoryboardMap(nextMap, { shouldReload = false } = {}) {
+        const frames = Object.values(nextMap);
+        await updateFirestoreStoryboard(project.id, {
+            frames,
+            sketches: nextMap,
+        });
+        if (shouldReload) {
+            await reload();
+        }
+    }
+
+    async function createSketch(scene, cut) {
+        if (!GEMINI_API_KEY) {
+            throw new Error('VITE_GEMINI_API_KEY가 설정되어 있지 않습니다.');
+        }
+
+        const prompt = buildStoryboardSketchPrompt(project, scene, cut);
+        const { dataUrl, modelUsed, imageSizeUsed } = await generateVisualImage({
+            apiKey: GEMINI_API_KEY,
+            prompt,
+            aspectRatio: '16:9',
+            imageSize,
+            label: cut.cut_id,
+            onStatus: setSketchStatus,
+        });
+
+        setSketchStatus(`${cut.cut_id}: Firebase Storage 업로드 중...`);
+        const { downloadUrl, storagePath } = await uploadProjectImage({
+            projectId: project.id,
+            kind: 'storyboard-sketches',
+            name: cut.cut_id,
+            dataUrl,
+        });
+
+        return {
+            ...(storyboardMap[cut.cut_id] || {}),
+            cut_id: cut.cut_id,
+            scene_id: scene.scene_id,
+            imageUrl: downloadUrl,
+            imagePath: storagePath,
+            prompt,
+            sourceSketchPrompt: cut.sketch_prompt || '',
+            model: modelUsed,
+            imageSize: imageSizeUsed,
+            generatedAt: new Date().toISOString(),
+        };
+    }
+
+    async function handleGenerateSketch(scene, cut) {
+        setSketchLoadingCutId(cut.cut_id);
+        setSketchError('');
+        setSketchStatus(`${cut.cut_id}: 스케치 생성 준비 중...`);
+        try {
+            const sketch = await createSketch(scene, cut);
+            const nextMap = {
+                ...storyboardMap,
+                [cut.cut_id]: sketch,
+            };
+            setStoryboardMap(nextMap);
+            await persistStoryboardMap(nextMap, { shouldReload: true });
+            setSketchStatus(`${cut.cut_id}: 스케치 콘티 저장 완료`);
+        } catch (err) {
+            setSketchError(err?.message || '스케치 생성 실패');
+            setSketchStatus('');
+        } finally {
+            setSketchLoadingCutId('');
+        }
+    }
+
+    async function handleGenerateMissingSketches() {
+        if (missingSketchCuts.length === 0 || sketchLoadingCutId) return;
+        setSketchError('');
+        let nextMap = { ...storyboardMap };
+
+        try {
+            for (const { scene, cut } of missingSketchCuts) {
+                setSketchLoadingCutId(cut.cut_id);
+                setSketchStatus(`${cut.cut_id}: 누락 스케치 생성 중...`);
+                const sketch = await createSketch(scene, cut);
+                nextMap = {
+                    ...nextMap,
+                    [cut.cut_id]: sketch,
+                };
+                setStoryboardMap(nextMap);
+                await persistStoryboardMap(nextMap);
+            }
+            await reload();
+            setSketchStatus(`누락 스케치 ${missingSketchCuts.length}건 생성 완료`);
+        } catch (err) {
+            setSketchError(err?.message || '누락 스케치 일괄 생성 실패');
+            setSketchStatus('');
+        } finally {
+            setSketchLoadingCutId('');
+        }
+    }
+
     async function handleSave() {
         setSaving(true);
-        const frames = Object.values(storyboardMap);
         try {
-            await updateFirestoreStoryboard(project.id, frames);
-            await reload();
+            await persistStoryboardMap(storyboardMap, { shouldReload: true });
         } catch (err) {
             console.error('[StoryboardPage] 저장 실패:', err?.message);
         }
@@ -269,7 +428,55 @@ export default function StoryboardPage() {
                 </div>
             </div>
 
-            {view === 'design' && <DesignView contiScenes={contiScenes} storyboardMap={storyboardMap} />}
+            <div className="card" style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-md)' }}>
+                <div className="flex-between" style={{ gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                    <div>
+                        <div className="form-label" style={{ marginBottom: '4px' }}>스케치 콘티 생성</div>
+                        <div className="text-muted" style={{ fontSize: '0.78rem' }}>
+                            줄콘티의 컷별 `sketch_prompt`를 기반으로 16:9 스토리보드 스케치를 생성해 저장합니다.
+                        </div>
+                    </div>
+                    <div className="flex gap-sm" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select
+                            className="form-select"
+                            value={imageSize}
+                            onChange={(event) => setImageSize(normalizeImageSize(event.target.value))}
+                            disabled={!!sketchLoadingCutId}
+                            style={{ width: 'auto' }}
+                        >
+                            <option value="1K">1K</option>
+                            <option value="2K">2K</option>
+                        </select>
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={handleGenerateMissingSketches}
+                            disabled={!GEMINI_API_KEY || missingSketchCuts.length === 0 || !!sketchLoadingCutId}
+                        >
+                            누락 스케치 일괄 생성 ({missingSketchCuts.length})
+                        </button>
+                    </div>
+                </div>
+                {!GEMINI_API_KEY && (
+                    <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '8px' }}>
+                        `VITE_GEMINI_API_KEY`가 설정되어야 스케치 이미지를 생성할 수 있습니다.
+                    </div>
+                )}
+                {sketchStatus && (
+                    <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '8px' }}>{sketchStatus}</div>
+                )}
+                {sketchError && (
+                    <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginTop: '8px' }}>{sketchError}</div>
+                )}
+            </div>
+
+            {view === 'design' && (
+                <DesignView
+                    contiScenes={contiScenes}
+                    storyboardMap={storyboardMap}
+                    onGenerateSketch={handleGenerateSketch}
+                    sketchLoadingCutId={sketchLoadingCutId}
+                />
+            )}
             {view === 'edit' && <EditView contiScenes={contiScenes} storyboardMap={storyboardMap} setStoryboardMap={setStoryboardMap} onSave={handleSave} saving={saving} />}
             {view === 'json' && <CopyBlockCode label="스토리보드 (JSON)" content={jsonText} id="storyboard-json" />}
 

@@ -4097,6 +4097,40 @@ a:hover {
   font-size: 0.88rem;
 }
 
+.cs-note {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+}
+
+.cs-note--progress {
+  background: rgba(108, 92, 231, 0.08);
+  border-color: rgba(108, 92, 231, 0.18);
+  color: var(--text-primary);
+}
+
+.cs-note--success {
+  background: rgba(0, 184, 148, 0.08);
+  border-color: rgba(0, 184, 148, 0.2);
+  color: var(--accent-green);
+}
+
+.cs-note-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.cs-note-body {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Streaming Box */
 .cs-stream-box {
   background: var(--bg-input);
@@ -4220,4 +4254,3 @@ a:hover {
   justify-content: flex-end;
   margin-bottom: var(--space-md);
 }
-

@@ -10,7 +10,20 @@ service cloud.firestore {
                     && request.resource.data.title is string
                     && request.resource.data.title.size() > 0;
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
-                      .hasOnly(['title', 'description', 'status', 'synopsis', 'screenplay', 'conti', 'storyboard', 'keyvisuals', 'productionPrompts', 'updatedAt']);
+                      .hasOnly([
+                        'title',
+                        'description',
+                        'status',
+                        'synopsis',
+                        'characterSheets',
+                        'characterSheetsUpdatedAt',
+                        'screenplay',
+                        'conti',
+                        'storyboard',
+                        'keyvisuals',
+                        'productionPrompts',
+                        'updatedAt'
+                      ]);
       allow delete: if true;
     }
 

@@ -93,3 +93,15 @@ export async function applyToneAndManner({
   });
 }
 
+export async function generateImageFromText({
+  apiKey,
+  prompt,
+  aspectRatio = '1:1',
+}) {
+  return generateImage({
+    apiKey,
+    aspectRatio,
+    parts: [{ text: prompt }],
+  });
+}
+

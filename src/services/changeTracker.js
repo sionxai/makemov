@@ -1,4 +1,8 @@
 const PIPELINE_ORDER = ['synopsis', 'screenplay', 'conti', 'storyboard', 'keyvisual', 'prompts'];
+const PROJECT_FIELD_BY_STAGE = {
+    keyvisual: 'keyvisuals',
+    prompts: 'productionPrompts',
+};
 
 function hasStageData(stage, section) {
     if (!section) return false;
@@ -25,6 +29,17 @@ function clone(value) {
 }
 
 function applyReviewStatus(stage, section, changedStage, changedAt) {
+    if (Array.isArray(section)) {
+        return section.map((item) => ({
+            ...item,
+            status: 'review',
+            upstreamChanged: {
+                sourceStage: changedStage,
+                changedAt,
+            },
+        }));
+    }
+
     const next = clone(section);
     next.status = 'review';
     next.upstreamChanged = {
@@ -47,6 +62,18 @@ function applyReviewStatus(stage, section, changedStage, changedAt) {
         next.structured = { ...next.structured, status: 'review' };
     }
 
+    if (stage === 'storyboard') {
+        next.frames = (next.frames || []).map((frame) => ({ ...frame, status: 'review' }));
+        if (next.sketches && typeof next.sketches === 'object') {
+            next.sketches = Object.fromEntries(
+                Object.entries(next.sketches).map(([key, sketch]) => [
+                    key,
+                    { ...sketch, status: 'review' },
+                ]),
+            );
+        }
+    }
+
     return next;
 }
 
@@ -60,11 +87,11 @@ export function buildDownstreamImpactPayload(project, changedStage, changedAt = 
     const payload = {};
 
     getDownstreamStages(changedStage)
-        .filter((stage) => ['screenplay', 'conti'].includes(stage))
         .forEach((stage) => {
-            const section = project?.[stage];
+            const field = PROJECT_FIELD_BY_STAGE[stage] || stage;
+            const section = project?.[field];
             if (!hasStageData(stage, section)) return;
-            payload[stage] = applyReviewStatus(stage, section, changedStage, changedAt);
+            payload[field] = applyReviewStatus(stage, section, changedStage, changedAt);
         });
 
     return payload;

@@ -112,6 +112,8 @@ export async function createFirestoreProject(title, description = '') {
         createdAt: now,
         updatedAt: now,
         synopsis: createStageSectionDefaults('synopsis'),
+        characterSheets: [],
+        characterSheetsUpdatedAt: null,
         screenplay: createStageSectionDefaults('screenplay'),
         conti: createStageSectionDefaults('conti'),
         storyboard: { frames: [] },
@@ -204,15 +206,26 @@ export async function updateFirestoreConti(id, contiData, meta = {}) {
         upstreamChanged: null,
         updatedAt: now,
     };
+    const impacts = buildDownstreamImpactPayload(project, 'conti', now);
     return updateFirestoreProject(id, {
         conti,
+        ...impacts,
     });
 }
 
 export async function updateFirestoreStoryboard(id, frames) {
-    return updateFirestoreProject(id, {
-        storyboard: { frames, updatedAt: new Date().toISOString() },
-    });
+    const project = await getFirestoreProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+    const now = new Date().toISOString();
+    const storyboard = Array.isArray(frames)
+        ? { frames, updatedAt: now }
+        : {
+            frames: Array.isArray(frames?.frames) ? frames.frames : [],
+            sketches: frames?.sketches || null,
+            updatedAt: now,
+        };
+    const impacts = buildDownstreamImpactPayload(project, 'storyboard', now);
+    return updateFirestoreProject(id, { storyboard, ...impacts });
 }
 
 export async function addFirestoreKeyVisual(id, visual) {
@@ -222,7 +235,28 @@ export async function addFirestoreKeyVisual(id, visual) {
         ...(project.keyvisuals || []),
         { ...visual, id: 'kv_' + Date.now().toString(36), createdAt: new Date().toISOString() },
     ];
-    return updateFirestoreProject(id, { keyvisuals });
+    const impacts = buildDownstreamImpactPayload(project, 'keyvisual', new Date().toISOString());
+    return updateFirestoreProject(id, { keyvisuals, ...impacts });
+}
+
+export async function addFirestoreKeyVisuals(id, visuals) {
+    const project = await getFirestoreProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+    const now = new Date().toISOString();
+    const visualItems = (Array.isArray(visuals) ? visuals : [])
+        .filter(Boolean)
+        .map((visual, index) => ({
+            ...visual,
+            id: visual.id || `kv_${Date.now().toString(36)}_${index}_${Math.random().toString(36).slice(2, 7)}`,
+            createdAt: visual.createdAt || now,
+        }));
+    if (visualItems.length === 0) return project;
+    const keyvisuals = [
+        ...(project.keyvisuals || []),
+        ...visualItems,
+    ];
+    const impacts = buildDownstreamImpactPayload(project, 'keyvisual', now);
+    return updateFirestoreProject(id, { keyvisuals, ...impacts });
 }
 
 export async function removeFirestoreKeyVisual(projectId, visualId) {

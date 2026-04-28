@@ -8,7 +8,29 @@ import { generateTextStream } from '../services/geminiTextService';
 import { GoogleGenAI } from '@google/genai';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
+const IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image-preview';
+const IMAGE_SIZE = import.meta.env.VITE_GEMINI_IMAGE_SIZE || '2K';
+const IMAGE_TIMEOUT_MS = Math.max(15000, Number(import.meta.env.VITE_GEMINI_IMAGE_TIMEOUT_MS || 90000));
+const IMAGE_FALLBACK_MODELS = (() => {
+    const fromEnv = String(import.meta.env.VITE_GEMINI_IMAGE_FALLBACK_MODELS || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    if (fromEnv.length > 0) {
+        return fromEnv;
+    }
+
+    if (IMAGE_MODEL === 'gemini-3-pro-image-preview') {
+        return ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
+    }
+
+    if (IMAGE_MODEL === 'gemini-3.1-flash-image-preview') {
+        return ['gemini-2.5-flash-image'];
+    }
+
+    return [];
+})();
 
 const CHARACTER_SYSTEM_PROMPT = `You are makemov's character design pipeline.
 
@@ -93,6 +115,60 @@ function emptyCharacter() {
     };
 }
 
+function formatActionError(error, fallback = '작업에 실패했습니다.') {
+    const message = String(error?.message || fallback).trim();
+    const code = String(error?.code || error?.status || error?.cause?.status || '').trim();
+
+    if (code && !message.includes(code)) {
+        return `${message} (code: ${code})`;
+    }
+
+    return message || fallback;
+}
+
+function normalizeImageSize(value) {
+    return value === '1K' ? '1K' : '2K';
+}
+
+function isRetriableImageError(error) {
+    const message = String(error?.message || error || '');
+    const status = Number(error?.status || error?.code || error?.cause?.status);
+
+    if (error?.name === 'AbortError') return true;
+    if ([408, 429, 500, 502, 503, 504].includes(status)) return true;
+
+    return /429|408|500|502|503|504|timeout|timed out|temporarily unavailable|overloaded|service unavailable|networkerror|failed to fetch/i.test(message);
+}
+
+function formatImageGenerationError(error, { model, timeoutMs }) {
+    if (error?.name === 'AbortError') {
+        const seconds = Math.round(timeoutMs / 1000);
+        return new Error(`${seconds}초 안에 이미지 응답이 없어 요청을 중단했습니다. 잠시 후 다시 시도하거나 더 빠른 이미지 모델로 전환해주세요.`, {
+            cause: { status: 'TIMEOUT', model },
+        });
+    }
+
+    const status = String(error?.status || error?.code || error?.cause?.status || '').trim();
+    const message = String(error?.message || error || '이미지 생성 실패').trim();
+
+    if (status === '503' || /503|service unavailable|overloaded/i.test(message)) {
+        return new Error(`Gemini 이미지 모델이 일시적으로 바쁩니다. (${model}) 잠시 후 다시 시도하거나 Flash Image 모델로 전환해주세요.`, {
+            cause: { status: status || '503', model },
+        });
+    }
+
+    return new Error(message || '이미지 생성 실패', {
+        cause: { status, model },
+    });
+}
+
+function buildImageModelSequence() {
+    return [IMAGE_MODEL, ...IMAGE_FALLBACK_MODELS]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .filter((item, index, list) => list.indexOf(item) === index);
+}
+
 function extractJson(text) {
     const source = String(text || '');
     const fenced = source.match(/```json\s*([\s\S]*?)```/i) || source.match(/```\s*([\s\S]*?)```/i);
@@ -154,33 +230,77 @@ function base64ToBlob(base64DataUrl) {
     return new Blob([ab], { type: mime });
 }
 
-async function generateCharacterSheetImage(char) {
+async function generateCharacterSheetImage(char, { onStatus, imageSize = IMAGE_SIZE } = {}) {
     if (!API_KEY) throw new Error('API 키가 설정되지 않았습니다');
 
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     const prompt = buildSheetPrompt(char);
+    const charName = char?.name || 'unknown';
+    const models = buildImageModelSequence();
+    const normalizedImageSize = normalizeImageSize(imageSize);
+    let lastError = null;
 
-    const response = await ai.models.generateContent({
-        model: IMAGE_MODEL,
-        contents: { parts: [{ text: prompt }] },
-        config: {
-            imageConfig: {
-                imageSize: '2K',
-                aspectRatio: '16:9',
-            },
-        },
-    });
+    for (let index = 0; index < models.length; index += 1) {
+        const activeModel = models[index];
+        const abortController = new AbortController();
+        const timeoutId = window.setTimeout(() => abortController.abort(), IMAGE_TIMEOUT_MS);
+        const slowNoticeId = window.setTimeout(() => {
+            onStatus?.(`${charName}: ${activeModel} 응답이 지연되고 있습니다. 보통 10~90초 정도 걸릴 수 있습니다.`);
+        }, 15000);
 
-    const parts = response?.candidates?.[0]?.content?.parts;
-    if (!Array.isArray(parts)) throw new Error('이미지 생성 실패: 응답 없음');
+        try {
+            onStatus?.(`${charName}: Gemini 이미지 생성 중... (${activeModel} ${index + 1}/${models.length}, ${normalizedImageSize})`);
 
-    for (const part of parts) {
-        if (part?.inlineData?.data) {
-            return `data:image/png;base64,${part.inlineData.data}`;
+            const response = await ai.models.generateContent({
+                model: activeModel,
+                contents: { parts: [{ text: prompt }] },
+                config: {
+                    abortSignal: abortController.signal,
+                    imageConfig: {
+                        imageSize: normalizedImageSize,
+                        aspectRatio: '16:9',
+                    },
+                },
+            });
+
+            const parts = response?.candidates?.[0]?.content?.parts;
+            if (!Array.isArray(parts)) {
+                throw new Error('이미지 생성 실패: 응답 없음');
+            }
+
+            for (const part of parts) {
+                if (part?.inlineData?.data) {
+                    return {
+                        base64DataUrl: `data:image/png;base64,${part.inlineData.data}`,
+                        modelUsed: activeModel,
+                        imageSizeUsed: normalizedImageSize,
+                    };
+                }
+            }
+
+            throw new Error('이미지 데이터가 반환되지 않았습니다');
+        } catch (error) {
+            lastError = error;
+
+            if (index < models.length - 1 && isRetriableImageError(error)) {
+                onStatus?.(`${charName}: ${activeModel} 응답이 불안정해 다음 모델로 재시도합니다...`);
+                continue;
+            }
+
+            throw formatImageGenerationError(error, {
+                model: activeModel,
+                timeoutMs: IMAGE_TIMEOUT_MS,
+            });
+        } finally {
+            window.clearTimeout(timeoutId);
+            window.clearTimeout(slowNoticeId);
         }
     }
 
-    throw new Error('이미지 데이터가 반환되지 않았습니다');
+    throw formatImageGenerationError(lastError, {
+        model: models[models.length - 1] || IMAGE_MODEL,
+        timeoutMs: IMAGE_TIMEOUT_MS,
+    });
 }
 
 async function uploadImageToStorage(projectId, charName, base64DataUrl) {
@@ -212,7 +332,13 @@ function DetailRow({ icon, label, value }) {
     );
 }
 
-function CharacterSheetCard({ char, onGenerateImage, imageLoading }) {
+function CharacterSheetCard({
+    char,
+    onGenerateImage,
+    imageLoading,
+    imageGenerationEnabled = true,
+    imageGenerationHint = '',
+}) {
     const [expanded, setExpanded] = useState(true);
     const [copied, setCopied] = useState(false);
 
@@ -274,9 +400,10 @@ function CharacterSheetCard({ char, onGenerateImage, imageLoading }) {
                                     <button
                                         className="btn btn-sm btn-secondary"
                                         onClick={() => onGenerateImage(char)}
-                                        disabled={imageLoading}
+                                        disabled={imageLoading || !imageGenerationEnabled}
+                                        title={imageGenerationHint || undefined}
                                     >
-                                        {imageLoading ? '생성 중...' : '🔄 재생성'}
+                                        {imageLoading ? '생성 중...' : imageGenerationEnabled ? '🔄 재생성' : '승인 후 재생성 가능'}
                                     </button>
                                 </div>
                             </div>
@@ -285,16 +412,21 @@ function CharacterSheetCard({ char, onGenerateImage, imageLoading }) {
                                 <button
                                     className="btn btn-primary"
                                     onClick={() => onGenerateImage(char)}
-                                    disabled={imageLoading}
+                                    disabled={imageLoading || !imageGenerationEnabled}
+                                    title={imageGenerationHint || undefined}
                                 >
                                     {imageLoading ? (
                                         <><span className="cs-spinner" /> 이미지 생성 중...</>
+                                    ) : !imageGenerationEnabled ? (
+                                        '✅ 승인 후 이미지 생성'
                                     ) : (
                                         '🎨 캐릭터 시트 이미지 생성'
                                     )}
                                 </button>
                                 <p className="cs-image-placeholder-desc">
-                                    16:9 비율 · 전신 정면/후면 + 얼굴 정면/측면
+                                    {imageGenerationEnabled
+                                        ? '16:9 비율 · 전신 정면/후면 + 얼굴 정면/측면'
+                                        : imageGenerationHint || '승인 & 저장 후 디자인 탭에서 생성할 수 있습니다.'}
                                 </p>
                             </div>
                         )}
@@ -339,7 +471,15 @@ function CharacterSheetCard({ char, onGenerateImage, imageLoading }) {
     );
 }
 
-function DesignView({ characters, onGenerateImage, imageLoadingName }) {
+function DesignView({
+    characters,
+    onGenerateImage,
+    imageLoadingName,
+    imageSize,
+    onImageSizeChange,
+    imageGenerationEnabled = true,
+    imageGenerationHint = '',
+}) {
     if (!characters?.length) return null;
 
     const imageCount = characters.filter((c) => c.sheetImageUrl).length;
@@ -362,15 +502,30 @@ function DesignView({ characters, onGenerateImage, imageLoadingName }) {
                 </div>
             </div>
 
-            {missingImages.length > 0 && (
+            {imageGenerationEnabled && (
                 <div className="cs-batch-actions">
-                    <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => missingImages.forEach((c) => onGenerateImage(c))}
-                        disabled={!!imageLoadingName}
-                    >
-                        🎨 누락 이미지 일괄 생성 ({missingImages.length}건)
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <label className="form-label" style={{ margin: 0, fontSize: '0.8rem' }}>생성 해상도</label>
+                        <select
+                            className="form-select"
+                            value={imageSize}
+                            onChange={(event) => onImageSizeChange?.(normalizeImageSize(event.target.value))}
+                            disabled={!!imageLoadingName}
+                            style={{ minWidth: '110px' }}
+                        >
+                            <option value="1K">1K</option>
+                            <option value="2K">2K</option>
+                        </select>
+                    </div>
+                    {missingImages.length > 0 && (
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => missingImages.forEach((c) => onGenerateImage(c))}
+                            disabled={!!imageLoadingName}
+                        >
+                            🎨 누락 이미지 일괄 생성 ({missingImages.length}건)
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -381,6 +536,8 @@ function DesignView({ characters, onGenerateImage, imageLoadingName }) {
                         char={char}
                         onGenerateImage={onGenerateImage}
                         imageLoading={imageLoadingName === char.name}
+                        imageGenerationEnabled={imageGenerationEnabled}
+                        imageGenerationHint={imageGenerationHint}
                     />
                 ))}
             </div>
@@ -505,7 +662,7 @@ function EditView({ characters, setCharacters, onSave, saving }) {
     );
 }
 
-function AiGenerateView({ project, setCharacters, onSave }) {
+function AiGenerateView({ project, onSave, onApproved, saving, imageSize }) {
     const [prompt, setPrompt] = useState('');
     const [streamText, setStreamText] = useState('');
     const [error, setError] = useState('');
@@ -588,11 +745,11 @@ ${prompt.trim() || defaultPrompt}
 
     async function handleApplyAndSave() {
         if (!generatedData) return;
-        setCharacters(generatedData);
         try {
             await onSave(generatedData);
+            onApproved?.(generatedData);
         } catch (err) {
-            setError(err.message || '저장 실패');
+            setError(formatActionError(err, '저장 실패'));
         }
     }
 
@@ -619,6 +776,12 @@ ${prompt.trim() || defaultPrompt}
                 </div>
             )}
 
+            {!hasSynopsis && (
+                <div className="cs-error" style={{ marginBottom: 'var(--space-md)' }}>
+                    시놉시스 생성 후 캐릭터 시트를 만들 수 있습니다.
+                </div>
+            )}
+
             <div className="cs-ai-prompt-area">
                 <label className="form-label">프롬프트 (선택)</label>
                 <textarea
@@ -632,7 +795,7 @@ ${prompt.trim() || defaultPrompt}
             </div>
 
             <div className="cs-ai-actions">
-                <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
+                <button className="btn btn-primary" onClick={handleGenerate} disabled={generating || !hasSynopsis || !API_KEY}>
                     {generating ? (
                         <><span className="cs-spinner" /> 생성 중...</>
                     ) : (
@@ -642,7 +805,13 @@ ${prompt.trim() || defaultPrompt}
                 {generatedData && !generating && (
                     <>
                         <button className="btn btn-secondary" onClick={handleGenerate}>🔄 재생성</button>
-                        <button className="btn btn-primary" onClick={handleApplyAndSave}>✅ 승인 & 저장</button>
+                        <button className="btn btn-primary" onClick={handleApplyAndSave} disabled={saving}>
+                            {saving ? (
+                                <><span className="cs-spinner" /> 저장 중...</>
+                            ) : (
+                                '✅ 승인 & 저장'
+                            )}
+                        </button>
                     </>
                 )}
             </div>
@@ -671,6 +840,10 @@ ${prompt.trim() || defaultPrompt}
                         characters={generatedData}
                         onGenerateImage={() => {}}
                         imageLoadingName={null}
+                        imageSize={imageSize}
+                        onImageSizeChange={() => {}}
+                        imageGenerationEnabled={false}
+                        imageGenerationHint="이 화면은 미리보기입니다. 승인 & 저장 후 디자인 탭에서 실제 이미지를 생성할 수 있습니다."
                     />
                 </div>
             )}
@@ -688,13 +861,19 @@ export default function CharacterPage() {
     });
     const [characters, setCharacters] = useState(project?.characterSheets || []);
     const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState('');
+    const [saveStatus, setSaveStatus] = useState('');
     const [imageLoadingName, setImageLoadingName] = useState(null);
+    const [imageSize, setImageSize] = useState(() => normalizeImageSize(IMAGE_SIZE));
+    const [imageStatus, setImageStatus] = useState('');
     const [imageError, setImageError] = useState('');
 
     const jsonText = useMemo(() => JSON.stringify(characters, null, 2), [characters]);
 
     async function handleSave(data) {
         setSaving(true);
+        setSaveError('');
+        setSaveStatus(data ? '캐릭터 시트를 저장하는 중...' : '변경사항을 저장하는 중...');
         try {
             const charsToSave = data || characters;
             await updateFirestoreProject(project.id, {
@@ -703,22 +882,34 @@ export default function CharacterPage() {
             });
             setCharacters(charsToSave);
             await reload();
+            setSaveStatus('캐릭터 시트를 저장했습니다. 디자인 탭에서 이미지를 생성할 수 있습니다.');
         } catch (err) {
-            console.error('[CharacterPage] 저장 실패:', err?.message);
+            const detail = formatActionError(err, '저장 실패');
+            console.error('[CharacterPage] 저장 실패:', detail);
+            setSaveError(detail);
+            setSaveStatus('');
+            throw new Error(detail);
+        } finally {
+            setSaving(false);
         }
-        setSaving(false);
     }
 
     async function handleGenerateImage(char) {
         const charName = char.name || 'unknown';
         setImageLoadingName(charName);
+        setSaveError('');
         setImageError('');
+        setImageStatus(`${charName}: Gemini 이미지 생성 요청 중... (${imageSize})`);
 
         try {
             // 1) Gemini로 이미지 생성 (base64)
-            const base64DataUrl = await generateCharacterSheetImage(char);
+            const { base64DataUrl, modelUsed, imageSizeUsed } = await generateCharacterSheetImage(char, {
+                onStatus: setImageStatus,
+                imageSize,
+            });
 
             // 2) Firebase Storage에 업로드
+            setImageStatus(`${charName}: Firebase Storage 업로드 중... (생성 모델: ${modelUsed}, ${imageSizeUsed})`);
             const { downloadUrl, storagePath } = await uploadImageToStorage(project.id, charName, base64DataUrl);
 
             // 3) 캐릭터 데이터에 URL 추가
@@ -735,19 +926,23 @@ export default function CharacterPage() {
             });
 
             // 4) Firestore에 저장 (영구 저장)
+            setImageStatus(`${charName}: 프로젝트에 저장 중...`);
             await updateFirestoreProject(project.id, {
                 characterSheets: updatedChars,
                 characterSheetsUpdatedAt: new Date().toISOString(),
             });
 
             setCharacters(updatedChars);
+            setImageStatus(`${charName}: 이미지 생성이 완료되었습니다. (모델: ${modelUsed}, ${imageSizeUsed})`);
             console.log(`[CharacterPage] ✅ ${charName} 이미지 생성 & 저장 완료`);
         } catch (err) {
-            console.error('[CharacterPage] 이미지 생성 실패:', err);
-            setImageError(`${charName}: ${err.message}`);
+            const detail = formatActionError(err, '이미지 생성 실패');
+            console.error('[CharacterPage] 이미지 생성 실패:', detail);
+            setImageError(`${charName}: ${detail}`);
+            setImageStatus('');
+        } finally {
+            setImageLoadingName(null);
         }
-
-        setImageLoadingName(null);
     }
 
     const updatedAt = project?.characterSheetsUpdatedAt;
@@ -783,12 +978,30 @@ export default function CharacterPage() {
                 </div>
             )}
 
+            {saveError && (
+                <div className="cs-error" style={{ marginBottom: 'var(--space-md)' }}>
+                    ⚠️ 저장 실패: {saveError}
+                </div>
+            )}
+
+            {(saving || imageLoadingName || imageStatus || saveStatus) && (
+                <div className={`cs-note ${imageLoadingName || saving ? 'cs-note--progress' : 'cs-note--success'}`} style={{ marginBottom: 'var(--space-md)' }}>
+                    <div className="cs-note-title">
+                        {imageLoadingName || saving ? <span className="cs-cursor">▍</span> : null}
+                        <span>{imageLoadingName ? '이미지 생성 진행 상태' : '저장 상태'}</span>
+                    </div>
+                    <div className="cs-note-body">{imageStatus || saveStatus}</div>
+                </div>
+            )}
+
             {view === 'design' && (
                 characters.length > 0 ? (
                     <DesignView
                         characters={characters}
                         onGenerateImage={handleGenerateImage}
                         imageLoadingName={imageLoadingName}
+                        imageSize={imageSize}
+                        onImageSizeChange={setImageSize}
                     />
                 ) : (
                     <div className="empty-state">
@@ -814,8 +1027,10 @@ export default function CharacterPage() {
             {view === 'ai' && (
                 <AiGenerateView
                     project={project}
-                    setCharacters={setCharacters}
                     onSave={handleSave}
+                    onApproved={() => setView('design')}
+                    saving={saving}
+                    imageSize={imageSize}
                 />
             )}
 

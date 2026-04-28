@@ -28,10 +28,11 @@ export const SCREENPLAY_SYSTEM_PROMPT = `You are makemov's screenplay pipeline.
 Return only valid JSON that matches the provided schema.
 Write all scene text in Korean.
 Use the screenplay skill rules:
-- convert the approved synopsis into a shootable scene list
+- convert the approved synopsis and character sheets into a shootable scene list
 - respect runtime-driven density and scene count
 - keep scene numbering sequential from S1
 - include heading, action, dialogue, and notes for every scene
+- preserve character identity, costume, props, and emotional range from the character sheets
 - notes must include runtime hints and directing intent
 - prefer externalized action and concise dialogue over exposition
 - set status to draft`;
@@ -41,10 +42,11 @@ export const CONTI_SYSTEM_PROMPT = `You are makemov's line conti pipeline.
 Return only valid JSON that matches the provided schema.
 Write Korean for visual, dialogue, and audio fields.
 Use the storyboard skill rules:
-- convert screenplay scenes into cut-based line conti
+- convert screenplay scenes and character sheets into cut-based line conti
 - preserve scene order and timing continuity
 - include shot, angle, camera_move, visual, dialogue, sfx, bgm, transition_out
 - generate photorealistic cinematic sketch_prompt strings when enabled
+- sketch_prompt must include visual continuity cues from the character sheets and the synopsis visual tone
 - promptContext is for UI display and should summarize era, culture, negatives
 - set status to draft`;
 
@@ -774,11 +776,12 @@ export function buildStageUserPrompt(stage, { projectTitle = '', userPrompt = ''
     if (stage === 'screenplay') {
         return `${promptLines.join('\n')}
 
-입력 시놉시스 JSON:
+입력 컨텍스트 JSON (시놉시스 + 캐릭터 시트):
 ${JSON.stringify(inputData || {}, null, 2)}
 
 작업:
-- 시놉시스를 씬 단위 시나리오로 변환한다.
+- 시놉시스와 캐릭터 시트를 씬 단위 시나리오로 변환한다.
+- 캐릭터별 외형, 의상, 소품, 감정 범위가 액션/대사/노트에 반영되도록 한다.
 - 씬 번호와 scene_id를 순차적으로 유지한다.
 - notes에는 러닝타임 힌트와 연출 키워드를 포함한다.
 - 응답은 반드시 JSON만 반환한다.`;
@@ -787,11 +790,13 @@ ${JSON.stringify(inputData || {}, null, 2)}
     if (stage === 'conti') {
         return `${promptLines.join('\n')}
 
-입력 시나리오 JSON:
+입력 컨텍스트 JSON (시나리오 + 시놉시스 톤 + 캐릭터 시트):
 ${JSON.stringify(inputData || {}, null, 2)}
 
 작업:
 - 각 씬을 컷으로 분해하고 컷별 실사 프롬프트를 생성한다.
+- 캐릭터 시트의 얼굴/의상/소품 연속성을 visual과 sketch_prompt에 반영한다.
+- 시놉시스의 장르, 톤, visualTone을 컷별 이미지 방향에 반영한다.
 - promptContext는 시대, 문화, 부정어를 한 줄씩 정리한다.
 - autoPrompt가 true면 sketch_prompt를 빈칸으로 두지 않는다.
 - 응답은 반드시 JSON만 반환한다.`;
