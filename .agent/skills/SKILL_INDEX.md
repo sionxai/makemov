@@ -7,11 +7,12 @@ makemov 프리프로덕션 파이프라인 스킬 인덱스.
 
 ## 파이프라인
 
+0. **프로젝트 순차 제작 프로토콜**: `project_pipeline/SKILL.md` — v1.0.0 ⬅️ 오케스트레이션 기준
 1. 시놉시스: `synopsis/SKILL.md` — v1.2.0
 2. 시나리오: `screenplay/SKILL.md` — v2.1.0 런타임 밀도 공식 + ACT-씬 정합 규칙
 3. 줄콘티: `storyboard/SKILL.md` — v2.1.0 실사 프롬프트 + 컷 리스트
 4. 키비주얼: `keyvisual/SKILL.md` — v2.0.0 앵커 잠금 + 승인 루프 + 생성기 어댑트
-5. **프리비즈**: `previs/SKILL.md` — v1.0.0 ⬅️ 신규
+5. **프리비즈**: `previs/SKILL.md` — v1.0.0
 6. 영상화: `videoproduction/SKILL.md` — v2.0.0 QA 루프 + 플랫폼 검증
 
 ## 보조 스킬
@@ -187,4 +188,3 @@ Draft → Review → Approved → Locked
 *v2.0.0 — 줄콘티 단계 전면 개편 반영*
 *v3.0.0 — 공통 규약 3종 신설, 프리비즈 단계 추가, 키비주얼·영상화 v2.0 업그레이드*
 *v3.1.0 — 이안 피드백 반영: 금지전이 규칙, rev충돌 정책, soft/hard 변경전파, 후순위 로드맵 확장*
-
